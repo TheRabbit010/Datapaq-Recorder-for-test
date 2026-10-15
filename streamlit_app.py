@@ -9,14 +9,13 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
-import glob
 from PIL import Image
 from datetime import datetime, timedelta
 
 # ==============================================================================
 # STREAMLIT PAGE CONFIGURATION & CSS STYLING
 # ==============================================================================
-st.set_page_config(page_title="Furnace Profiler & Timeline Sync", page_icon="🔥", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Datapaq .PAQ Profiler & Recorder Sync", page_icon="🔥", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
 <style>
@@ -149,34 +148,24 @@ def process_paq_file(file_bytes, filename):
     
     probe_cols = [f"PB#{i}" for i in range(1, 11) if f"PB#{i}" in df_master.columns]
     
+    # 🔴 การระบุชนิดเตาจาก Code 1 ที่มีความเที่ยงตรงสูง
     recipe_corpus = f"{filename} " + " ".join([clean_paq_text(s) for s in raw_texts])
     furnace_id, furnace_variant = "NB3", "NB3"
     
-    if re.search(r'\b(CDS|KN9|12SHP|DNGA|P42QR|P42V|SU2|F44|Y4L|CMFB|MY25|CE|D12A)\b', recipe_corpus, re.IGNORECASE): 
-        furnace_id, furnace_variant = "NB1", "NB1 (CDS/KN9/12SHP)"
-    elif re.search(r'\b(KE8|M2|EVO)\b', recipe_corpus, re.IGNORECASE): 
-        furnace_id, furnace_variant = "NB3", "NB3 (KE8 : M2/EVO)"
-    elif re.search(r'\bRAD\b', recipe_corpus, re.IGNORECASE): 
-        furnace_id, furnace_variant = "NB1", "NB1 (RAD)"
-    elif re.search(r'\bBTM\b', recipe_corpus, re.IGNORECASE): 
-        furnace_id, furnace_variant = "NB3", "NB3 (BTM)"
-    elif re.search(r'\b(Utahc|UT)\b', recipe_corpus, re.IGNORECASE): 
-        furnace_id, furnace_variant = "NB2", "NB2 (Utahc)"
-    elif re.search(r'\b(Tahc|G2|NB2)\b', recipe_corpus, re.IGNORECASE): 
-        furnace_id, furnace_variant = "NB2", "NB2 (Tahc)"
-    elif re.search(r'\bNB3\b', recipe_corpus, re.IGNORECASE): 
-        furnace_id, furnace_variant = "NB3", "NB3"
-    elif re.search(r'\bWK\d{1,2}\b', recipe_corpus, re.IGNORECASE): 
-        furnace_id, furnace_variant = "NB1", "NB1 (Standard)"
+    if re.search(r'\bRAD\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB1", "NB1 (RAD)"
+    elif re.search(r'\b(Utahc|UT)\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB2", "NB2 (Utahc)"
+    elif re.search(r'\b(Tahc|G2|NB2)\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB2", "NB2 (Tahc)"
+    elif re.search(r'\b(CDS|KN9|12SHP|DNGA|P42QR|P42V|SU2|F44|Y4L|CMFB|MY25|CE|D12A)\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB1", "NB1 (CDS/KN9/12SHP)"
+    elif re.search(r'\bBTM\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB3", "NB3 (BTM)"
+    elif re.search(r'\b(KE8|M2|EVO|NB3)\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB3", "NB3 (KE8 : M2/EVO)"
+    elif (re.search(r'\bWK\d{1,2}\b', recipe_corpus, re.IGNORECASE) or re.search(r'\b\d{6}\b', recipe_corpus)): furnace_id, furnace_variant = "NB1", "NB1 (Standard)"
     else:
-        f_match = re.search(r'NB\s*Furnace\s*0?([123])\b|NB-0?([123])\b', recipe_corpus, re.IGNORECASE)
+        f_match = re.search(r'NB\s*Furnace\s*0?([123])\b|NB\s*#?\s*0?([123])\b|NB-0?([123])\b', recipe_corpus, re.IGNORECASE)
         if f_match: 
             found_num = next(g for g in f_match.groups() if g is not None)
             furnace_id = furnace_variant = f"NB{found_num}"
 
-    # ==========================================
-    # 🔴 ดึงวันที่/เวลา Collection Started เท่านั้น 
-    # ==========================================
+    # 🔴 ดึงวันที่/เวลา Collection Started
     raw_full_text = " ".join(raw_texts)
     detected_paq_dt = None
     
@@ -477,14 +466,31 @@ brazing_trigger = cfg.get("trigger_temp_brazing")
 paq_filename = data_paq["filename"]
 detected_dt = data_paq.get("detected_datetime")
 
-# 🔴 แสดงข้อมูลชื่อไฟล์และเวลาที่ตรวจพบ
+# 🔴 แสดงชื่อไฟล์ ชนิดเตา และ Collection Started
 if detected_dt:
     dt_str = detected_dt.strftime('%d/%m/%Y %H:%M:%S')
     st.success(f"✅ **PAQ File Loaded:** {paq_filename} | **Detected Furnace:** {f_variant} | 🕰️ **Collection Started:** {dt_str}")
 else:
     st.success(f"✅ **PAQ File Loaded:** {paq_filename} | **Detected Furnace:** {f_variant}")
-    st.warning("⚠️ ไม่พบข้อมูลเวลา (Collection Started) ในไฟล์ PAQ หรือข้อมูลเวลาอาจไม่ได้อยู่ในรูปแบบมาตรฐาน")
 
+# 🔴 เมนู Align PAQ Time ให้ผู้ใช้ปรับเปลี่ยนวัน/เวลาได้
+st.sidebar.markdown("---")
+st.sidebar.header("⏱️ Align PAQ Time")
+
+if detected_dt:
+    default_date = detected_dt.date()
+    default_time = detected_dt.time()
+else:
+    default_date = datetime.today().date()
+    default_time = datetime.strptime("12:00:00", "%H:%M:%S").time()
+
+paq_real_start = st.sidebar.date_input("PAQ Run Date", value=default_date)
+paq_real_time = st.sidebar.time_input("PAQ Start Time (เข้าเตา)", value=default_time)
+
+real_start_datetime = datetime.combine(paq_real_start, paq_real_time)
+
+# 🔴 เมนูอัปโหลดไฟล์ Recorder
+st.sidebar.markdown("---")
 st.sidebar.header(f"📁 2. Upload Recorder Data for {furnace_id}")
 
 recorder_files = None
@@ -498,11 +504,6 @@ elif furnace_id == "NB1":
     recorder_files = st.sidebar.file_uploader("Upload NB1 Recorder (.DAD)", type=["dad", "DAD"], accept_multiple_files=True, key=f"nb1_{st.session_state.uploader_key}")
     debinder_files = st.sidebar.file_uploader("Upload NB1 Debinder (.csv)", type=["csv"], accept_multiple_files=True, key=f"db_{st.session_state.uploader_key}")
 
-if detected_dt:
-    real_start_datetime = detected_dt
-else:
-    real_start_datetime = datetime.now() 
-
 df_paq["Real_DateTime"] = real_start_datetime + pd.to_timedelta(df_paq["Time_Seconds"], unit="s")
 paq_start = df_paq["Real_DateTime"].min()
 paq_end = df_paq["Real_DateTime"].max()
@@ -512,9 +513,6 @@ tabs = st.tabs(["⏱️ Timeline Sync (PAQ + All Recorders)", "📊 PAQ Original
 with tabs[0]:
     if not recorder_files and not debinder_files:
         st.info(f"👉 กรุณาอัปโหลดไฟล์ Recorder ของ {furnace_id} ที่เมนูด้านซ้าย เพื่อดูกราฟซ้อนทับ (Timeline Sync)")
-    elif not detected_dt:
-        # โชว์แจ้งเตือนสีแดงเฉพาะหลังจากที่มีความพยายามอัปโหลดไฟล์ Recorder แล้วเท่านั้น
-        st.error("❌ **ไม่พบข้อมูลวันที่และเวลา (Collection Started) ในไฟล์ PAQ!**\n\nระบบไม่สามารถนำกราฟไปวางซ้อน (Sync) ได้ เนื่องจากไม่มีจุดอ้างอิงเวลา กรุณากดปุ่ม 'Reset / Clear Data' ด้านซ้ายมือ แล้วเลือกอัปโหลดไฟล์ PAQ ที่มีข้อมูลเวลาสมบูรณ์")
     else:
         df_recorder = pd.DataFrame()
         df_debinder = pd.DataFrame()
@@ -534,7 +532,7 @@ with tabs[0]:
 
         if (not df_recorder.empty and not valid_rec) or (not df_debinder.empty and not valid_deb):
             st.error("⚠️ คำเตือน: วัน/เวลาของไฟล์ PAQ ไม่อยู่ในช่วงข้อมูล Recorder หรือ Debinder ที่อัปโหลด")
-            st.info("👉 กรุณาอัปโหลดไฟล์ Recorder ชุดใหม่ให้ตรง หรือตรวจสอบไฟล์อีกครั้ง")
+            st.info("👉 กรุณาอัปโหลดไฟล์ Recorder ชุดใหม่ให้ตรง หรือปรับเปลี่ยนวันที่/เวลาในเมนู Align PAQ Time ด้านซ้ายมือ")
         
         elif not df_recorder.empty or not df_debinder.empty:
             st.success(f"✅ วันและเวลาของ PAQ ({paq_start.strftime('%H:%M')}) อยู่ในช่วงข้อมูลของ Recorder (นำกราฟซ้อนกันได้)")
