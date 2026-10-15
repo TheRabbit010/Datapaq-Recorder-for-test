@@ -31,7 +31,6 @@ button[data-baseweb="tab"] { font-size: 1.2rem !important; font-weight: 600 !imp
 PROBE_COLORS = {"PB#1": "#ff0000", "PB#2": "#00ff00", "PB#3": "#0000ff", "PB#4": "#8b4513", "PB#5": "#ff00ff", "PB#6": "#b8860b", "PB#7": "#800080", "PB#8": "#00ffff", "PB#9": "#d32f2f", "PB#10": "#5c4033"}
 GROUP_COLORS = {"Dryer": "rgba(255, 235, 156, 0.15)", "Debinder": "rgba(255, 199, 119, 0.15)", "Heating": "rgba(255, 160, 160, 0.15)", "Cooling": "rgba(173, 216, 230, 0.15)"}
 
-# คืนค่า FURNACE_CONFIGS แบบเต็ม เพื่อให้เห็น Process Zone ย่อยครบทุกจุด
 FURNACE_CONFIGS = {
     "NB1": {
         "line_speed_mpm": 1.400, "trigger_temp_brazing": 577.0,
@@ -336,7 +335,7 @@ def parse_nb1_debinder_csv(files_data):
 def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=None, secondary_y_title=None, height=520, paq_df=None, paq_cols=None, paq_colors=None, y_range=None, zones=None, line_speed=None, paq_start_time=None, group_colors=None, brazing_temp=None):
     fig = make_subplots(specs=[[{"secondary_y": bool(secondary_y_cols)}]])
     
-    # 1. วาดแถบสีกระบวนการเตา (Process Zones) เป็นพื้นหลัง
+    # 1. วาดแถบสีกระบวนการเตา (Process Zones) เป็นพื้นหลังสำหรับ "ทุกกราฟ"
     if zones and line_speed and paq_start_time and group_colors:
         for z in zones:
             z_color = group_colors.get(z["group"], "rgba(200, 200, 200, 0.2)")
@@ -355,13 +354,13 @@ def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=No
                 annotation=dict(font_size=9, font_color="#a0aab2", textangle=-90)
             )
 
-    # 2. วาดเส้น Brazing Threshold (ถ้ามีการส่งค่ามา)
+    # 2. วาดเส้น Brazing Threshold
     if brazing_temp:
         fig.add_hline(y=brazing_temp, line_dash="dash", line_color="#FF4B4B", 
                       annotation_text=f"Brazing ({brazing_temp}°C)", 
                       annotation_position="bottom right", secondary_y=False)
 
-    # 3. วาดกราฟเส้นของ Recorder (Background) -> ปรับเป็นเส้นประหนา
+    # 3. วาดกราฟเส้นของ Recorder (Background) -> เส้นประหนา ชัดเจน
     rec_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2"]
     for i, col in enumerate(y_cols):
         if col in df_rec.columns:
@@ -384,7 +383,7 @@ def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=No
                     opacity=0.9
                 ), secondary_y=True)
                 
-    # 5. วาดกราฟ PAQ ซ้อนทับ (Foreground) -> เส้นทึบหนา 2.5
+    # 5. วาดกราฟ PAQ ซ้อนทับ (Foreground) -> เส้นทึบหนา 2.5 ชัดเจน
     if paq_df is not None and paq_cols is not None:
         for col in paq_cols:
             c = paq_colors.get(col) if paq_colors else None
@@ -445,8 +444,9 @@ cfg = data_paq["cfg"]
 zones = cfg.get("zones", [])
 line_speed = cfg.get("line_speed_mpm", 1.0)
 brazing_trigger = cfg.get("trigger_temp_brazing")
+paq_filename = data_paq["filename"]
 
-st.success(f"✅ PAQ File Loaded: **{uploaded_paq.name}** | Detected Furnace: **{f_variant}**")
+st.success(f"✅ PAQ File Loaded: **{paq_filename}** | Detected Furnace: **{f_variant}**")
 
 st.sidebar.header(f"📁 2. Upload Recorder Data for {furnace_id}")
 
@@ -505,20 +505,23 @@ with tabs[0]:
             # บังคับสเกล 0-650°C ทุกกราฟ
             forced_y_range = [0, 650]
             
-            # Arguments ส่วนกลางสำหรับวาด Furnace Zones ลงไปใน background ของทุกกราฟ
+            # Arguments ส่วนกลางสำหรับวาด Furnace Zones และ PAQ Overlay ลงไปในทุกๆ กราฟ
             zone_args = dict(
                 paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=forced_y_range,
                 zones=zones, line_speed=line_speed, paq_start_time=real_start_datetime, 
                 group_colors=GROUP_COLORS, brazing_temp=brazing_trigger
             )
             
+            # ตัวแปรชื่อนำหน้ากราฟให้เป็น Format เดียวกันทั้งหมด
+            chart_prefix = f"Datapaq: {paq_filename} + Recorder {furnace_id}"
+
             # =======================================================
             # 1. Recorder: Top Zones
             # =======================================================
             if not df_recorder.empty:
                 rec_top_cols = [c for c in df_recorder.columns if "Top Z#" in c]
                 if rec_top_cols:
-                    draw_line_chart(df_recorder, rec_top_cols, f"1. TIMELINE SYNC: PAQ + {furnace_id} Recorder (Top Zones)", "Temperature (°C)", x_range_view, **zone_args)
+                    draw_line_chart(df_recorder, rec_top_cols, f"1. {chart_prefix} + Top Zones", "Temperature (°C)", x_range_view, **zone_args)
             
             # =======================================================
             # 2. Recorder: Bottom Zones
@@ -526,7 +529,7 @@ with tabs[0]:
             if not df_recorder.empty:
                 bot_cols = [c for c in df_recorder.columns if "Bottom Z#" in c]
                 if bot_cols:
-                    draw_line_chart(df_recorder, bot_cols, "2. Recorder: Bottom Zones", "Temperature (°C)", x_range_view, **zone_args)
+                    draw_line_chart(df_recorder, bot_cols, f"2. {chart_prefix} + Bottom Zones", "Temperature (°C)", x_range_view, **zone_args)
             
             # =======================================================
             # 3. Recorder: Dryer Zones
@@ -534,14 +537,14 @@ with tabs[0]:
             if not df_recorder.empty:
                 dry_cols = [c for c in df_recorder.columns if "Dryer" in c or "DRYOFF" in c]
                 if dry_cols:
-                    draw_line_chart(df_recorder, dry_cols, "3. Recorder: Dryer Zones", "Temperature (°C)", x_range_view, **zone_args)
+                    draw_line_chart(df_recorder, dry_cols, f"3. {chart_prefix} + Dryer Zones", "Temperature (°C)", x_range_view, **zone_args)
                     
             # =======================================================
             # 4. Recorder: Debinder Zones (เฉพาะ NB1)
             # =======================================================
             if furnace_id == "NB1" and not df_debinder.empty:
                 db_cols = [c for c in df_debinder.columns if "Zone #" in c]
-                draw_line_chart(df_debinder, db_cols, "4. Recorder: Debinder Zones (NB1)", "Temperature (°C)", x_range_view, ["Combustion Air Temp"], "Comb Air Temp (°C)", **zone_args)
+                draw_line_chart(df_debinder, db_cols, f"4. {chart_prefix} + Debinder Zones", "Temperature (°C)", x_range_view, ["Combustion Air Temp"], "Comb Air Temp (°C)", **zone_args)
                 
             # =======================================================
             # 5. Recorder: Oxygen (ppm) & N2 Flow Rate
@@ -550,7 +553,7 @@ with tabs[0]:
                 o2_cols = [c for c in df_recorder.columns if "O2" in c or "Oxygen" in c]
                 n2_cols = [c for c in df_recorder.columns if "N2" in c]
                 if o2_cols or n2_cols:
-                    draw_line_chart(df_recorder, o2_cols, "5. Recorder: Oxygen (ppm) & N2 Flow Rate", "Oxygen (ppm) / PAQ Temp (°C)", x_range_view, n2_cols, "N2 Flow Rate", **zone_args)
+                    draw_line_chart(df_recorder, o2_cols, f"5. {chart_prefix} + Oxygen (ppm) & N2 Flow Rate", "Oxygen (ppm) / PAQ Temp (°C)", x_range_view, n2_cols, "N2 Flow Rate", **zone_args)
             
             # =======================================================
             # 6. Recorder: Dew Point (NB1) / Cool Water (NB3)
@@ -559,13 +562,12 @@ with tabs[0]:
                 dew_cols = [c for c in df_recorder.columns if "DEW POINT" in c]
                 cool_cols = [c for c in df_recorder.columns if "COOL WATER" in c]
                 
-                # ถ้ามี Dew Point ให้เผื่อ Range ติดลบ
                 if dew_cols:
                     zone_args_dew = zone_args.copy()
                     zone_args_dew["y_range"] = [-100, 650]
-                    draw_line_chart(df_recorder, dew_cols, "6. Recorder: Dew Point", "Dew Point (Cdp) / PAQ Temp (°C)", x_range_view, **zone_args_dew)
+                    draw_line_chart(df_recorder, dew_cols, f"6. {chart_prefix} + Dew Point", "Dew Point (Cdp) / PAQ Temp (°C)", x_range_view, **zone_args_dew)
                 if cool_cols:
-                    draw_line_chart(df_recorder, cool_cols, "6. Recorder: Cool Water Temp", "Temperature (°C)", x_range_view, **zone_args)
+                    draw_line_chart(df_recorder, cool_cols, f"6. {chart_prefix} + Cool Water Temp", "Temperature (°C)", x_range_view, **zone_args)
 
 with tabs[1]:
     st.subheader(f"Global Furnace Profile (Standalone) - {f_variant}")
@@ -595,6 +597,5 @@ with tabs[1]:
     for col in probe_cols:
         fig_orig.add_trace(go.Scatter(x=df_paq["Real_DateTime"], y=df_paq[col], name=col, line=dict(color=PROBE_COLORS.get(col), width=2)))
     
-    # บังคับสเกล 0-650°C
-    fig_orig.update_layout(title=f"Original PAQ Profile: {data_paq['filename']}", xaxis_title="Real Date & Time", yaxis_title="Temperature (°C)", yaxis=dict(range=[0, 650]), height=500, hovermode="x unified")
+    fig_orig.update_layout(title=f"Original PAQ Profile: {paq_filename}", xaxis_title="Real Date & Time", yaxis_title="Temperature (°C)", yaxis=dict(range=[0, 650]), height=500, hovermode="x unified")
     st.plotly_chart(fig_orig, use_container_width=True)
