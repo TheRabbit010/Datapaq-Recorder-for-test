@@ -122,7 +122,9 @@ def process_paq_file(file_bytes, filename):
                 except:
                     try: data_b = zlib.decompress(raw_b[8:] if raw_b.startswith(b'ZLIB') else raw_b, -zlib.MAX_WBITS)
                     except: pass
-            ascii_matches = re.findall(rb'[\x20-\x7E]{4,}', data_b)
+            
+            clean_b = data_b.replace(b'\x00', b'')
+            ascii_matches = re.findall(rb'[\x20-\x7E]{4,}', clean_b)
             for m in ascii_matches: raw_texts.append(m.decode('ascii', errors='ignore').strip())
         except: continue
 
@@ -172,44 +174,24 @@ def process_paq_file(file_bytes, filename):
             furnace_id = furnace_variant = f"NB{found_num}"
 
     # ==========================================
-    # 🔴 ดึงวันที่/เวลา Collection Started แบบสมบูรณ์ 
+    # 🔴 ดึงวันที่/เวลา Collection Started เท่านั้น
     # ==========================================
     raw_full_text = " ".join(raw_texts)
     detected_paq_dt = None
     
-    # 1. ค้นหา Tag รูปแบบตรงตัวของ #paqfile start time=... และ #paqfile date=...
-    time_match = re.search(r'#paqfile\s+start\s+time\s*=\s*(\d{1,2}:\d{2}:\d{2}(?:\s*[aApP][mM])?)', raw_full_text, re.IGNORECASE)
-    date_match = re.search(r'#paqfile\s+date\s*=\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})', raw_full_text, re.IGNORECASE)
+    # 1. ค้นหาจากคำว่า "Collection Started" โดยตรง (บังคับให้ดึงแค่จุดนี้ ไม่เอา Data Loaded)
+    collection_match = re.search(r'Collection\s*Started[^\d]*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\s+(\d{1,2}:\d{2}:\d{2}(?:\s*[aApP][mM])?)', raw_full_text, re.IGNORECASE)
     
-    # 2. ค้นหาคำว่า Collection Started: ...
-    collection_match = re.search(r'(?:Collection\s*Started|Start\s*Time)[^\d]*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\s+(\d{1,2}:\d{2}:\d{2}(?:\s*[aApP][mM])?)', raw_full_text, re.IGNORECASE)
+    # 2. ค้นหาจากแท็กของระบบ Datapaq
+    paq_time_match = re.search(r'#paqfile\s+start\s+time\s*=\s*(\d{1,2}:\d{2}:\d{2}(?:\s*[aApP][mM])?)', raw_full_text, re.IGNORECASE)
+    paq_date_match = re.search(r'#paqfile\s+date\s*=\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})', raw_full_text, re.IGNORECASE)
 
-    if date_match and time_match:
-        try: detected_paq_dt = pd.to_datetime(f"{date_match.group(1)} {time_match.group(1)}", dayfirst=True).to_pydatetime()
+    if collection_match:
+        try: detected_paq_dt = pd.to_datetime(f"{collection_match.group(1)} {collection_match.group(2)}").to_pydatetime()
         except: pass
-    elif time_match:
-        any_date = re.search(r'\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b', raw_full_text)
-        if any_date:
-            try: detected_paq_dt = pd.to_datetime(f"{any_date.group(1)} {time_match.group(1)}", dayfirst=True).to_pydatetime()
-            except: pass
-    elif collection_match:
-        try: detected_paq_dt = pd.to_datetime(f"{collection_match.group(1)} {collection_match.group(2)}", dayfirst=True).to_pydatetime()
+    elif paq_date_match and paq_time_match:
+        try: detected_paq_dt = pd.to_datetime(f"{paq_date_match.group(1)} {paq_time_match.group(1)}").to_pydatetime()
         except: pass
-
-    # 3. ค้นหาแบบคู่ วันที่และเวลา ที่อยู่ใกล้กัน
-    if not detected_paq_dt:
-        paired_match = re.search(r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})[^\d]{1,20}(\d{1,2}:\d{2}:\d{2}(?:\s*[aApP][mM])?)', raw_full_text)
-        if paired_match:
-            try: detected_paq_dt = pd.to_datetime(f"{paired_match.group(1)} {paired_match.group(2)}", dayfirst=True).to_pydatetime()
-            except: pass
-            
-    # 4. Fallback สุดท้าย ดึงวันที่/เวลา แรกสุดที่โผล่ขึ้นมาในไฟล์
-    if not detected_paq_dt:
-        date_matches = re.findall(r'\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b', raw_full_text)
-        time_matches = re.findall(r'\b(\d{1,2}:\d{2}:\d{2}(?:\s*[aApP][mM])?)\b', raw_full_text)
-        if date_matches and time_matches:
-            try: detected_paq_dt = pd.to_datetime(f"{date_matches[0]} {time_matches[0]}", dayfirst=True).to_pydatetime()
-            except: pass
 
     base_cfg = FURNACE_CONFIGS.get(furnace_id, FURNACE_CONFIGS["NB3"])
 
