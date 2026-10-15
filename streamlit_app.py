@@ -29,11 +29,22 @@ button[data-baseweb="tab"] { font-size: 1.2rem !important; font-weight: 600 !imp
 # CONSTANTS & CONFIGURATIONS
 # ==============================================================================
 PROBE_COLORS = {"PB#1": "#ff0000", "PB#2": "#00ff00", "PB#3": "#0000ff", "PB#4": "#8b4513", "PB#5": "#ff00ff", "PB#6": "#b8860b", "PB#7": "#800080", "PB#8": "#00ffff", "PB#9": "#d32f2f", "PB#10": "#5c4033"}
+GROUP_COLORS = {"Dryer": "rgba(255, 235, 156, 0.15)", "Debinder": "rgba(255, 199, 119, 0.15)", "Heating": "rgba(255, 160, 160, 0.15)", "Cooling": "rgba(173, 216, 230, 0.15)"}
 
+# คืนค่า FURNACE_CONFIGS แบบเต็ม เพื่อให้เห็น Process Zone ย่อยครบทุกจุด
 FURNACE_CONFIGS = {
-    "NB1": {"line_speed_mpm": 1.400, "trigger_temp_brazing": 577.0},
-    "NB2": {"line_speed_mpm": 1.560, "trigger_temp_brazing": 577.0},
-    "NB3": {"line_speed_mpm": 1.270, "trigger_temp_brazing": 577.0}
+    "NB1": {
+        "line_speed_mpm": 1.400, "trigger_temp_brazing": 577.0,
+        "zones": [{"num": 1, "name": "Dryer Z#1", "start": 0.00, "length": 3.15, "group": "Dryer"}, {"num": 2, "name": "Dryer Z#2", "start": 3.15, "length": 3.13, "group": "Dryer"}, {"num": 3, "name": "EXT Dryer", "start": 6.27, "length": 0.70, "group": "Dryer"}, {"num": 4, "name": "ENT DB", "start": 6.97, "length": 0.67, "group": "Debinder"}, {"num": 5, "name": "DB Z#1", "start": 7.64, "length": 3.13, "group": "Debinder"}, {"num": 6, "name": "DB Z#2", "start": 10.77, "length": 2.60, "group": "Debinder"}, {"num": 7, "name": "DB Z#3", "start": 13.37, "length": 2.60, "group": "Debinder"}, {"num": 8, "name": "DB Z#4", "start": 15.97, "length": 3.13, "group": "Debinder"}, {"num": 9, "name": "XFER#1", "start": 19.10, "length": 2.71, "group": "Heating"}, {"num": 10, "name": "Z#1", "start": 21.81, "length": 3.14, "group": "Heating"}, {"num": 11, "name": "Z#2", "start": 24.95, "length": 2.68, "group": "Heating"}, {"num": 12, "name": "Z#3", "start": 27.63, "length": 2.72, "group": "Heating"}, {"num": 13, "name": "Z#4", "start": 30.35, "length": 2.04, "group": "Heating"}, {"num": 14, "name": "Z#5", "start": 32.39, "length": 2.00, "group": "Heating"}, {"num": 15, "name": "Z#6", "start": 34.39, "length": 2.00, "group": "Heating"}, {"num": 16, "name": "Z#7", "start": 36.39, "length": 2.29, "group": "Heating"}, {"num": 17, "name": "WatCool#1", "start": 38.68, "length": 2.39, "group": "Cooling"}, {"num": 18, "name": "WatCool#2", "start": 41.07, "length": 1.90, "group": "Cooling"}, {"num": 19, "name": "Exit curtain box", "start": 42.97, "length": 1.90, "group": "Cooling"}, {"num": 20, "name": "XFER#2", "start": 44.87, "length": 0.60, "group": "Cooling"}, {"num": 21, "name": "Air Cool#1", "start": 45.47, "length": 1.25, "group": "Cooling"}, {"num": 22, "name": "Air Cool#2", "start": 46.72, "length": 1.25, "group": "Cooling"}, {"num": 23, "name": "Exit", "start": 47.97, "length": 1.85, "group": "Cooling"}]
+    },
+    "NB2": {
+        "line_speed_mpm": 1.560, "trigger_temp_brazing": 577.0,
+        "zones": [{"num": 1, "name": "DryOff-Z#1", "start": 0.00, "length": 2.80, "group": "Dryer"}, {"num": 2, "name": "DryOff-Z#2", "start": 2.80, "length": 2.80, "group": "Dryer"}, {"num": 3, "name": "Xfer1", "start": 5.60, "length": 3.13, "group": "Dryer"}, {"num": 4, "name": "Z#1", "start": 8.73, "length": 3.60, "group": "Heating"}, {"num": 5, "name": "Z#2", "start": 12.33, "length": 2.70, "group": "Heating"}, {"num": 6, "name": "Z#3", "start": 15.03, "length": 2.40, "group": "Heating"}, {"num": 7, "name": "Z#4", "start": 17.43, "length": 2.10, "group": "Heating"}, {"num": 8, "name": "Z#5", "start": 19.53, "length": 2.30, "group": "Heating"}, {"num": 9, "name": "Z#6", "start": 21.83, "length": 1.90, "group": "Heating"}, {"num": 10, "name": "Z#7", "start": 23.73, "length": 2.20, "group": "Heating"}, {"num": 11, "name": "Xfer2", "start": 25.93, "length": 0.80, "group": "Heating"}, {"num": 12, "name": "Watcol1", "start": 26.73, "length": 1.75, "group": "Cooling"}, {"num": 13, "name": "Watcol2", "start": 28.48, "length": 1.85, "group": "Cooling"}, {"num": 14, "name": "Exit curtain box", "start": 30.33, "length": 2.30, "group": "Cooling"}, {"num": 15, "name": "Airc1", "start": 32.63, "length": 1.25, "group": "Cooling"}, {"num": 16, "name": "Airc2", "start": 33.88, "length": 1.25, "group": "Cooling"}, {"num": 17, "name": "Exit", "start": 35.13, "length": 1.80, "group": "Cooling"}]
+    },
+    "NB3": {
+        "line_speed_mpm": 1.270, "trigger_temp_brazing": 577.0,
+        "zones": [{"num": 1, "name": "XFER", "start": 0.00, "length": 0.10, "group": "Dryer"}, {"num": 2, "name": "Dryer#1", "start": 0.10, "length": 1.85, "group": "Dryer"}, {"num": 3, "name": "Dryer#2", "start": 1.95, "length": 1.85, "group": "Dryer"}, {"num": 4, "name": "Dryer#3", "start": 3.80, "length": 1.95, "group": "Dryer"}, {"num": 5, "name": "XFER#1", "start": 5.75, "length": 3.39, "group": "Dryer"}, {"num": 6, "name": "Z#1", "start": 9.14, "length": 3.60, "group": "Heating"}, {"num": 7, "name": "Z#2", "start": 12.74, "length": 2.75, "group": "Heating"}, {"num": 8, "name": "Z#3", "start": 15.49, "length": 2.30, "group": "Heating"}, {"num": 9, "name": "Z#4", "start": 17.79, "length": 2.10, "group": "Heating"}, {"num": 10, "name": "Z#5", "start": 19.89, "length": 2.10, "group": "Heating"}, {"num": 11, "name": "Z#6", "start": 21.99, "length": 1.90, "group": "Heating"}, {"num": 12, "name": "Z#7", "start": 23.89, "length": 1.63, "group": "Heating"}, {"num": 13, "name": "WatCoo#1", "start": 25.52, "length": 2.56, "group": "Cooling"}, {"num": 14, "name": "WatCoo#2", "start": 28.08, "length": 1.90, "group": "Cooling"}, {"num": 15, "name": "Exit curtain box", "start": 29.98, "length": 1.90, "group": "Cooling"}, {"num": 16, "name": "XFER#2", "start": 31.88, "length": 0.60, "group": "Cooling"}, {"num": 17, "name": "AirCoo#1", "start": 32.48, "length": 1.25, "group": "Cooling"}, {"num": 18, "name": "AirCoo#2", "start": 33.73, "length": 1.25, "group": "Cooling"}, {"num": 19, "name": "Exit", "start": 34.98, "length": 1.85, "group": "Cooling"}]
+    }
 }
 
 CH_NB1 = [
@@ -154,11 +165,10 @@ def process_paq_file(file_bytes, filename):
             furnace_id = furnace_variant = f"NB{found_num}"
 
     base_cfg = FURNACE_CONFIGS.get(furnace_id, FURNACE_CONFIGS["NB3"])
-    line_speed_mpm = base_cfg["line_speed_mpm"]
 
     return {
         "filename": filename, "df_master": df_master, "probe_cols": probe_cols, "invalid_cols": [], 
-        "furnace_id": furnace_id, "furnace_variant": furnace_variant, "cfg": base_cfg, "line_speed_mpm": line_speed_mpm
+        "furnace_id": furnace_id, "furnace_variant": furnace_variant, "cfg": base_cfg, "line_speed_mpm": base_cfg["line_speed_mpm"]
     }
 
 # ==============================================================================
@@ -321,15 +331,38 @@ def parse_nb1_debinder_csv(files_data):
     return pd.concat(combined_dfs, ignore_index=True).drop_duplicates("DateTime").sort_values("DateTime").reset_index(drop=True)
 
 # ==============================================================================
-# HELPER FOR DRAWING SUB-CHARTS (PROFESSIONAL STYLING)
+# HELPER FOR DRAWING SUB-CHARTS (WITH PAQ OVERLAY & PROCESS ZONES)
 # ==============================================================================
-def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=None, secondary_y_title=None, height=520, paq_df=None, paq_cols=None, paq_colors=None, y_range=None):
+def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=None, secondary_y_title=None, height=520, paq_df=None, paq_cols=None, paq_colors=None, y_range=None, zones=None, line_speed=None, paq_start_time=None, group_colors=None, brazing_temp=None):
     fig = make_subplots(specs=[[{"secondary_y": bool(secondary_y_cols)}]])
     
-    # 🎨 ปรับชุดสีสำหรับ Recorder ให้มองเห็นชัดเจน เป็นมืออาชีพ
+    # 1. วาดแถบสีกระบวนการเตา (Process Zones) เป็นพื้นหลัง
+    if zones and line_speed and paq_start_time and group_colors:
+        for z in zones:
+            z_color = group_colors.get(z["group"], "rgba(200, 200, 200, 0.2)")
+            z_start_sec = (z["start"] / line_speed) * 60
+            z_end_sec = ((z["start"] + z["length"]) / line_speed) * 60
+            
+            z_start_dt = paq_start_time + pd.to_timedelta(z_start_sec, unit="s")
+            z_end_dt = paq_start_time + pd.to_timedelta(z_end_sec, unit="s")
+            
+            fig.add_vrect(
+                x0=z_start_dt, x1=z_end_dt, 
+                fillcolor=z_color, layer="below", line_width=0.5, 
+                line_dash="dot", line_color="rgba(120, 120, 120, 0.4)", 
+                annotation_text=f"{z['num']}.{z['name']}", 
+                annotation_position="top left", 
+                annotation=dict(font_size=9, font_color="#a0aab2", textangle=-90)
+            )
+
+    # 2. วาดเส้น Brazing Threshold (ถ้ามีการส่งค่ามา)
+    if brazing_temp:
+        fig.add_hline(y=brazing_temp, line_dash="dash", line_color="#FF4B4B", 
+                      annotation_text=f"Brazing ({brazing_temp}°C)", 
+                      annotation_position="bottom right", secondary_y=False)
+
+    # 3. วาดกราฟเส้นของ Recorder (Background) -> ปรับเป็นเส้นประหนา
     rec_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2"]
-    
-    # 1. กราฟ Recorder (Background) -> ปรับเป็นเส้นประยาว (dash) หนา 2 และความเข้ม 0.9
     for i, col in enumerate(y_cols):
         if col in df_rec.columns:
             fig.add_trace(go.Scatter(
@@ -339,7 +372,7 @@ def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=No
                 opacity=0.9
             ), secondary_y=False)
             
-    # 2. กราฟ Recorder แกนรอง (เช่น N2) -> ใช้เส้นประจุด (dot) ให้ต่างกัน
+    # 4. วาดกราฟเส้นของ Recorder แกนรอง (เช่น N2) -> ใช้เส้นประจุด
     if secondary_y_cols:
         sec_colors = ["#17becf", "#bcbd22", "#ff9896"]
         for i, col in enumerate(secondary_y_cols):
@@ -351,7 +384,7 @@ def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=No
                     opacity=0.9
                 ), secondary_y=True)
                 
-    # 3. กราฟ PAQ (Foreground) -> เส้นทึบหนา 2.5 ชัดเจน
+    # 5. วาดกราฟ PAQ ซ้อนทับ (Foreground) -> เส้นทึบหนา 2.5
     if paq_df is not None and paq_cols is not None:
         for col in paq_cols:
             c = paq_colors.get(col) if paq_colors else None
@@ -361,7 +394,7 @@ def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=No
                 line=dict(color=c, width=2.5)
             ), secondary_y=False)
 
-    # 4. ตั้งค่าแกน Y และ Layout หลัก
+    # 6. ตั้งค่าแกน Y และ Layout
     layout_yaxis = dict(title=y_title, showgrid=True, zeroline=False)
     if y_range:
         layout_yaxis["range"] = y_range
@@ -408,6 +441,10 @@ furnace_id = data_paq["furnace_id"]
 f_variant = data_paq["furnace_variant"]
 df_paq = data_paq["df_master"]
 probe_cols = data_paq["probe_cols"]
+cfg = data_paq["cfg"]
+zones = cfg.get("zones", [])
+line_speed = cfg.get("line_speed_mpm", 1.0)
+brazing_trigger = cfg.get("trigger_temp_brazing")
 
 st.success(f"✅ PAQ File Loaded: **{uploaded_paq.name}** | Detected Furnace: **{f_variant}**")
 
@@ -465,8 +502,15 @@ with tabs[0]:
             st.success(f"✅ วันและเวลาของ PAQ ({paq_start.strftime('%H:%M')}) อยู่ในช่วงข้อมูลของ Recorder (นำกราฟซ้อนกันได้)")
             x_range_view = [paq_start - timedelta(minutes=3), paq_end + timedelta(minutes=3)]
             
-            # บังคับสเกลแกน Y ที่ 0-650 ตลอด
+            # บังคับสเกล 0-650°C ทุกกราฟ
             forced_y_range = [0, 650]
+            
+            # Arguments ส่วนกลางสำหรับวาด Furnace Zones ลงไปใน background ของทุกกราฟ
+            zone_args = dict(
+                paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=forced_y_range,
+                zones=zones, line_speed=line_speed, paq_start_time=real_start_datetime, 
+                group_colors=GROUP_COLORS, brazing_temp=brazing_trigger
+            )
             
             # =======================================================
             # 1. Recorder: Top Zones
@@ -474,7 +518,7 @@ with tabs[0]:
             if not df_recorder.empty:
                 rec_top_cols = [c for c in df_recorder.columns if "Top Z#" in c]
                 if rec_top_cols:
-                    draw_line_chart(df_recorder, rec_top_cols, "1. Recorder: Top Zones", "Temperature (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=forced_y_range)
+                    draw_line_chart(df_recorder, rec_top_cols, f"1. TIMELINE SYNC: PAQ + {furnace_id} Recorder (Top Zones)", "Temperature (°C)", x_range_view, **zone_args)
             
             # =======================================================
             # 2. Recorder: Bottom Zones
@@ -482,7 +526,7 @@ with tabs[0]:
             if not df_recorder.empty:
                 bot_cols = [c for c in df_recorder.columns if "Bottom Z#" in c]
                 if bot_cols:
-                    draw_line_chart(df_recorder, bot_cols, "2. Recorder: Bottom Zones", "Temperature (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=forced_y_range)
+                    draw_line_chart(df_recorder, bot_cols, "2. Recorder: Bottom Zones", "Temperature (°C)", x_range_view, **zone_args)
             
             # =======================================================
             # 3. Recorder: Dryer Zones
@@ -490,14 +534,14 @@ with tabs[0]:
             if not df_recorder.empty:
                 dry_cols = [c for c in df_recorder.columns if "Dryer" in c or "DRYOFF" in c]
                 if dry_cols:
-                    draw_line_chart(df_recorder, dry_cols, "3. Recorder: Dryer Zones", "Temperature (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=forced_y_range)
+                    draw_line_chart(df_recorder, dry_cols, "3. Recorder: Dryer Zones", "Temperature (°C)", x_range_view, **zone_args)
                     
             # =======================================================
             # 4. Recorder: Debinder Zones (เฉพาะ NB1)
             # =======================================================
             if furnace_id == "NB1" and not df_debinder.empty:
                 db_cols = [c for c in df_debinder.columns if "Zone #" in c]
-                draw_line_chart(df_debinder, db_cols, "4. Recorder: Debinder Zones (NB1)", "Temperature (°C)", x_range_view, ["Combustion Air Temp"], "Comb Air Temp (°C)", paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=forced_y_range)
+                draw_line_chart(df_debinder, db_cols, "4. Recorder: Debinder Zones (NB1)", "Temperature (°C)", x_range_view, ["Combustion Air Temp"], "Comb Air Temp (°C)", **zone_args)
                 
             # =======================================================
             # 5. Recorder: Oxygen (ppm) & N2 Flow Rate
@@ -506,8 +550,7 @@ with tabs[0]:
                 o2_cols = [c for c in df_recorder.columns if "O2" in c or "Oxygen" in c]
                 n2_cols = [c for c in df_recorder.columns if "N2" in c]
                 if o2_cols or n2_cols:
-                    # คง Y หลักที่ 0-650 เพื่อรองรับการโชว์ PAQ Temp ซ้อน
-                    draw_line_chart(df_recorder, o2_cols, "5. Recorder: Oxygen (ppm) & N2 Flow Rate", "Oxygen (ppm) / PAQ Temp (°C)", x_range_view, n2_cols, "N2 Flow Rate", paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=forced_y_range)
+                    draw_line_chart(df_recorder, o2_cols, "5. Recorder: Oxygen (ppm) & N2 Flow Rate", "Oxygen (ppm) / PAQ Temp (°C)", x_range_view, n2_cols, "N2 Flow Rate", **zone_args)
             
             # =======================================================
             # 6. Recorder: Dew Point (NB1) / Cool Water (NB3)
@@ -516,18 +559,42 @@ with tabs[0]:
                 dew_cols = [c for c in df_recorder.columns if "DEW POINT" in c]
                 cool_cols = [c for c in df_recorder.columns if "COOL WATER" in c]
                 
-                # ถ้ามี Dew Point, อาจจะติดลบได้ เลยให้ Y range ต่ำกว่า 0 
+                # ถ้ามี Dew Point ให้เผื่อ Range ติดลบ
                 if dew_cols:
-                    draw_line_chart(df_recorder, dew_cols, "6. Recorder: Dew Point", "Dew Point (Cdp) / PAQ Temp (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=[-100, 650])
+                    zone_args_dew = zone_args.copy()
+                    zone_args_dew["y_range"] = [-100, 650]
+                    draw_line_chart(df_recorder, dew_cols, "6. Recorder: Dew Point", "Dew Point (Cdp) / PAQ Temp (°C)", x_range_view, **zone_args_dew)
                 if cool_cols:
-                    draw_line_chart(df_recorder, cool_cols, "6. Recorder: Cool Water Temp", "Temperature (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=forced_y_range)
+                    draw_line_chart(df_recorder, cool_cols, "6. Recorder: Cool Water Temp", "Temperature (°C)", x_range_view, **zone_args)
 
 with tabs[1]:
     st.subheader(f"Global Furnace Profile (Standalone) - {f_variant}")
     fig_orig = go.Figure()
-    for col in probe_cols:
-        fig_orig.add_trace(go.Scatter(x=df_paq["Time_Seconds"], y=df_paq[col], name=col, line=dict(color=PROBE_COLORS.get(col))))
     
-    # บังคับสเกล 0-650°C สำหรับกราฟ PAQ เดี่ยวด้วย
-    fig_orig.update_layout(title=f"Original PAQ Profile: {data_paq['filename']}", xaxis_title="Time (Seconds)", yaxis_title="Temperature (°C)", yaxis=dict(range=[0, 650]), height=500, hovermode="x unified")
+    # วาดแถบ Furnace Process สำหรับ Standalone (คำนวณแบบ Real_DateTime เพื่อความสอดคล้องกัน)
+    if zones and line_speed:
+        for z in zones:
+            z_color = GROUP_COLORS.get(z["group"], "rgba(200, 200, 200, 0.2)")
+            z_start_sec = (z["start"] / line_speed) * 60
+            z_end_sec = ((z["start"] + z["length"]) / line_speed) * 60
+            z_start_dt = real_start_datetime + pd.to_timedelta(z_start_sec, unit="s")
+            z_end_dt = real_start_datetime + pd.to_timedelta(z_end_sec, unit="s")
+            
+            fig_orig.add_vrect(
+                x0=z_start_dt, x1=z_end_dt, 
+                fillcolor=z_color, layer="below", line_width=0.5, 
+                line_dash="dot", line_color="rgba(120, 120, 120, 0.4)", 
+                annotation_text=f"{z['num']}.{z['name']}", 
+                annotation_position="top left", 
+                annotation=dict(font_size=9, font_color="#a0aab2", textangle=-90)
+            )
+            
+    if brazing_trigger:
+        fig_orig.add_hline(y=brazing_trigger, line_dash="dash", line_color="#FF4B4B", annotation_text=f"Brazing ({brazing_trigger}°C)", annotation_position="bottom right")
+
+    for col in probe_cols:
+        fig_orig.add_trace(go.Scatter(x=df_paq["Real_DateTime"], y=df_paq[col], name=col, line=dict(color=PROBE_COLORS.get(col), width=2)))
+    
+    # บังคับสเกล 0-650°C
+    fig_orig.update_layout(title=f"Original PAQ Profile: {data_paq['filename']}", xaxis_title="Real Date & Time", yaxis_title="Temperature (°C)", yaxis=dict(range=[0, 650]), height=500, hovermode="x unified")
     st.plotly_chart(fig_orig, use_container_width=True)
