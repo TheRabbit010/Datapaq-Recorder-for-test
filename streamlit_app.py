@@ -480,13 +480,15 @@ elif furnace_id == "NB1":
     recorder_files = st.sidebar.file_uploader("Upload NB1 Recorder (.DAD)", type=["dad", "DAD"], accept_multiple_files=True, key=f"nb1_{st.session_state.uploader_key}")
     debinder_files = st.sidebar.file_uploader("Upload NB1 Debinder (.csv)", type=["csv"], accept_multiple_files=True, key=f"db_{st.session_state.uploader_key}")
 
-# 🔴 ระบบออโต้ดึงเวลาเข้าเตา โดยซ่อน Error ไว้จนกว่าจะมีการอัปโหลด Recorder
 if detected_dt:
     real_start_datetime = detected_dt
     st.sidebar.markdown("---")
     st.sidebar.success(f"🕰️ เวลาเข้าเตาอัตโนมัติ (PAQ):\n\n**{detected_dt.strftime('%d/%m/%Y %H:%M:%S')}**")
 else:
-    real_start_datetime = datetime.now()
+    st.sidebar.markdown("---")
+    st.sidebar.error("❌ **ไม่พบข้อมูลเวลาเข้าเตา!**\n\nระบบไม่สามารถอ่านค่า Collection Started จากไฟล์ PAQ นี้ได้ กรุณาอัปโหลดไฟล์ใหม่")
+    st.error("❌ **ไม่พบข้อมูลวันที่และเวลา (Collection Started) ในไฟล์ PAQ!**\n\nระบบไม่สามารถนำกราฟไปวางซ้อน (Sync) ได้ กรุณากดปุ่ม 'Reset / Clear Data' แล้วเลือกอัปโหลดไฟล์ PAQ ที่มีข้อมูลเวลาสมบูรณ์")
+    st.stop()
 
 df_paq["Real_DateTime"] = real_start_datetime + pd.to_timedelta(df_paq["Time_Seconds"], unit="s")
 paq_start = df_paq["Real_DateTime"].min()
@@ -497,9 +499,6 @@ tabs = st.tabs(["⏱️ Timeline Sync (PAQ + All Recorders)", "📊 PAQ Original
 with tabs[0]:
     if not recorder_files and not debinder_files:
         st.info(f"👉 กรุณาอัปโหลดไฟล์ Recorder ของ {furnace_id} ที่เมนูด้านซ้าย เพื่อดูกราฟซ้อนทับ (Timeline Sync)")
-    elif not detected_dt:
-        # หากผู้ใช้อัปโหลด Recorder แต่ไฟล์ PAQ ดึงเวลาไม่ได้ ให้โชว์แจ้งเตือนสีแดงตรงนี้แทน
-        st.error("❌ **ไม่พบข้อมูลวันที่และเวลา (Collection Started) ในไฟล์ PAQ!**\n\nระบบไม่สามารถนำกราฟไปวางซ้อน (Sync) ได้ เนื่องจากไม่มีจุดอ้างอิงเวลา กรุณากดปุ่ม 'Reset / Clear Data' ด้านซ้ายมือ แล้วเลือกอัปโหลดไฟล์ PAQ ที่มีข้อมูลเวลาสมบูรณ์")
     else:
         df_recorder = pd.DataFrame()
         df_debinder = pd.DataFrame()
@@ -523,7 +522,15 @@ with tabs[0]:
         
         elif not df_recorder.empty or not df_debinder.empty:
             st.success(f"✅ วันและเวลาของ PAQ ({paq_start.strftime('%H:%M')}) อยู่ในช่วงข้อมูลของ Recorder (นำกราฟซ้อนกันได้)")
-            x_range_view = [paq_start - timedelta(minutes=3), paq_end + timedelta(minutes=3)]
+            
+            # คำนวณช่วงเวลาที่ดีที่สุดให้พอดีกับกระบวนการเตา
+            if zones and line_speed:
+                max_dist = max([z["start"] + z["length"] for z in zones])
+                total_furnace_sec = (max_dist / line_speed) * 60
+                furnace_end_datetime = real_start_datetime + timedelta(seconds=total_furnace_sec)
+                optimal_x_range = [real_start_datetime - timedelta(minutes=2), furnace_end_datetime + timedelta(minutes=5)]
+            else:
+                optimal_x_range = [paq_start - timedelta(minutes=3), paq_end + timedelta(minutes=3)]
             
             forced_y_range = [0, 650]
             
@@ -538,27 +545,27 @@ with tabs[0]:
             if not df_recorder.empty:
                 rec_top_cols = [c for c in df_recorder.columns if "Top Z#" in c]
                 if rec_top_cols:
-                    draw_line_chart(df_recorder, rec_top_cols, f"1. {chart_prefix} + Top Zones", "Temperature (°C)", x_range_view, **zone_args)
+                    draw_line_chart(df_recorder, rec_top_cols, f"1. {chart_prefix} + Top Zones", "Temperature (°C)", optimal_x_range, **zone_args)
             
             if not df_recorder.empty:
                 bot_cols = [c for c in df_recorder.columns if "Bottom Z#" in c]
                 if bot_cols:
-                    draw_line_chart(df_recorder, bot_cols, f"2. {chart_prefix} + Bottom Zones", "Temperature (°C)", x_range_view, **zone_args)
+                    draw_line_chart(df_recorder, bot_cols, f"2. {chart_prefix} + Bottom Zones", "Temperature (°C)", optimal_x_range, **zone_args)
             
             if not df_recorder.empty:
                 dry_cols = [c for c in df_recorder.columns if "Dryer" in c or "DRYOFF" in c]
                 if dry_cols:
-                    draw_line_chart(df_recorder, dry_cols, f"3. {chart_prefix} + Dryer Zones", "Temperature (°C)", x_range_view, **zone_args)
+                    draw_line_chart(df_recorder, dry_cols, f"3. {chart_prefix} + Dryer Zones", "Temperature (°C)", optimal_x_range, **zone_args)
                     
             if furnace_id == "NB1" and not df_debinder.empty:
                 db_cols = [c for c in df_debinder.columns if "Zone #" in c]
-                draw_line_chart(df_debinder, db_cols, f"4. {chart_prefix} + Debinder Zones", "Temperature (°C)", x_range_view, ["Combustion Air Temp"], "Comb Air Temp (°C)", **zone_args)
+                draw_line_chart(df_debinder, db_cols, f"4. {chart_prefix} + Debinder Zones", "Temperature (°C)", optimal_x_range, ["Combustion Air Temp"], "Comb Air Temp (°C)", **zone_args)
                 
             if not df_recorder.empty:
                 o2_cols = [c for c in df_recorder.columns if "O2" in c or "Oxygen" in c]
                 n2_cols = [c for c in df_recorder.columns if "N2" in c]
                 if o2_cols or n2_cols:
-                    draw_line_chart(df_recorder, o2_cols, f"5. {chart_prefix} + Oxygen (ppm) & N2 Flow Rate", "Oxygen (ppm) / PAQ Temp (°C)", x_range_view, n2_cols, "N2 Flow Rate", **zone_args)
+                    draw_line_chart(df_recorder, o2_cols, f"5. {chart_prefix} + Oxygen (ppm) & N2 Flow Rate", "Oxygen (ppm) / PAQ Temp (°C)", optimal_x_range, n2_cols, "N2 Flow Rate", **zone_args)
             
             if not df_recorder.empty:
                 dew_cols = [c for c in df_recorder.columns if "DEW POINT" in c]
@@ -567,15 +574,20 @@ with tabs[0]:
                 if dew_cols:
                     zone_args_dew = zone_args.copy()
                     zone_args_dew["y_range"] = [-100, 650]
-                    draw_line_chart(df_recorder, dew_cols, f"6. {chart_prefix} + Dew Point", "Dew Point (Cdp) / PAQ Temp (°C)", x_range_view, **zone_args_dew)
+                    draw_line_chart(df_recorder, dew_cols, f"6. {chart_prefix} + Dew Point", "Dew Point (Cdp) / PAQ Temp (°C)", optimal_x_range, **zone_args_dew)
                 if cool_cols:
-                    draw_line_chart(df_recorder, cool_cols, f"6. {chart_prefix} + Cool Water Temp", "Temperature (°C)", x_range_view, **zone_args)
+                    draw_line_chart(df_recorder, cool_cols, f"6. {chart_prefix} + Cool Water Temp", "Temperature (°C)", optimal_x_range, **zone_args)
 
 with tabs[1]:
     st.subheader(f"Global Furnace Profile (Standalone) - {f_variant}")
     fig_orig = go.Figure()
     
     if zones and line_speed:
+        max_dist = max([z["start"] + z["length"] for z in zones])
+        total_furnace_sec = (max_dist / line_speed) * 60
+        furnace_end_datetime = real_start_datetime + timedelta(seconds=total_furnace_sec)
+        optimal_x_range_orig = [real_start_datetime - timedelta(minutes=2), furnace_end_datetime + timedelta(minutes=5)]
+        
         for z in zones:
             z_color = GROUP_COLORS.get(z["group"], "rgba(200, 200, 200, 0.2)")
             z_start_sec = (z["start"] / line_speed) * 60
@@ -591,6 +603,8 @@ with tabs[1]:
                 annotation_position="top left", 
                 annotation=dict(font_size=9, font_color="#a0aab2", textangle=-90)
             )
+    else:
+        optimal_x_range_orig = [paq_start - timedelta(minutes=2), paq_end + timedelta(minutes=2)]
             
     if brazing_trigger:
         fig_orig.add_hline(y=brazing_trigger, line_dash="dash", line_color="#FF4B4B", annotation_text=f"Brazing ({brazing_trigger}°C)", annotation_position="bottom right")
@@ -598,5 +612,13 @@ with tabs[1]:
     for col in probe_cols:
         fig_orig.add_trace(go.Scatter(x=df_paq["Real_DateTime"], y=df_paq[col], name=col, line=dict(color=PROBE_COLORS.get(col), width=2)))
     
-    fig_orig.update_layout(title=f"Original PAQ Profile: {paq_filename}", xaxis_title="Real Date & Time", yaxis_title="Temperature (°C)", yaxis=dict(range=[0, 650]), height=500, hovermode="x unified")
+    fig_orig.update_layout(
+        title=f"Original PAQ Profile: {paq_filename}", 
+        xaxis_title="Real Date & Time", 
+        xaxis=dict(range=optimal_x_range_orig), 
+        yaxis_title="Temperature (°C)", 
+        yaxis=dict(range=[0, 650]), 
+        height=500, 
+        hovermode="x unified"
+    )
     st.plotly_chart(fig_orig, use_container_width=True)
