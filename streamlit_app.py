@@ -9,6 +9,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+import glob
 from PIL import Image
 from datetime import datetime, timedelta
 
@@ -173,16 +174,10 @@ def process_paq_file(file_bytes, filename):
             found_num = next(g for g in f_match.groups() if g is not None)
             furnace_id = furnace_variant = f"NB{found_num}"
 
-    # ==========================================
-    # 🔴 ดึงวันที่/เวลา Collection Started เท่านั้น
-    # ==========================================
     raw_full_text = " ".join(raw_texts)
     detected_paq_dt = None
     
-    # 1. ค้นหาจากคำว่า "Collection Started" โดยตรง (บังคับให้ดึงแค่จุดนี้ ไม่เอา Data Loaded)
     collection_match = re.search(r'Collection\s*Started[^\d]*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\s+(\d{1,2}:\d{2}:\d{2}(?:\s*[aApP][mM])?)', raw_full_text, re.IGNORECASE)
-    
-    # 2. ค้นหาจากแท็กของระบบ Datapaq
     paq_time_match = re.search(r'#paqfile\s+start\s+time\s*=\s*(\d{1,2}:\d{2}:\d{2}(?:\s*[aApP][mM])?)', raw_full_text, re.IGNORECASE)
     paq_date_match = re.search(r'#paqfile\s+date\s*=\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})', raw_full_text, re.IGNORECASE)
 
@@ -361,7 +356,7 @@ def parse_nb1_debinder_csv(files_data):
     return pd.concat(combined_dfs, ignore_index=True).drop_duplicates("DateTime").sort_values("DateTime").reset_index(drop=True)
 
 # ==============================================================================
-# HELPER FOR DRAWING SUB-CHARTS
+# HELPER FOR DRAWING SUB-CHARTS (WITH AUTO FILE FINDING LOGIC SUPPORT)
 # ==============================================================================
 def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=None, secondary_y_title=None, height=520, paq_df=None, paq_cols=None, paq_colors=None, y_range=None, zones=None, line_speed=None, paq_start_time=None, group_colors=None, brazing_temp=None):
     fig = make_subplots(specs=[[{"secondary_y": bool(secondary_y_cols)}]])
@@ -479,18 +474,46 @@ else:
     st.success(f"✅ **PAQ File Loaded:** {paq_filename} | **Detected Furnace:** {f_variant}")
     st.warning("⚠️ ไม่พบข้อมูลเวลา (Collection Started) ในไฟล์ PAQ หรือข้อมูลเวลาอาจไม่ได้อยู่ในรูปแบบมาตรฐาน")
 
-st.sidebar.header(f"📁 2. Upload Recorder Data for {furnace_id}")
+# 🔴 ระบบออโต้สแกนไฟล์จาก Local Folder 
+st.sidebar.header(f"📁 2. Load Recorder Data for {furnace_id}")
+load_method = st.sidebar.radio("วิธีการโหลดไฟล์ Recorder:", ["📤 อัปโหลดไฟล์ (Upload)", "📂 ระบุที่อยู่โฟลเดอร์ (Local Folder)"])
 
-recorder_files = None
-debinder_files = None
+recorder_files_data = []
+debinder_files_data = []
 
-if furnace_id == "NB3":
-    recorder_files = st.sidebar.file_uploader("Upload NB3 Recorder (.csv)", type=["csv"], accept_multiple_files=True, key=f"nb3_{st.session_state.uploader_key}")
-elif furnace_id == "NB2":
-    recorder_files = st.sidebar.file_uploader("Upload NB2 Recorder (.DAD)", type=["dad", "DAD"], accept_multiple_files=True, key=f"nb2_{st.session_state.uploader_key}")
-elif furnace_id == "NB1":
-    recorder_files = st.sidebar.file_uploader("Upload NB1 Recorder (.DAD)", type=["dad", "DAD"], accept_multiple_files=True, key=f"nb1_{st.session_state.uploader_key}")
-    debinder_files = st.sidebar.file_uploader("Upload NB1 Debinder (.csv)", type=["csv"], accept_multiple_files=True, key=f"db_{st.session_state.uploader_key}")
+if load_method == "📤 อัปโหลดไฟล์ (Upload)":
+    if furnace_id == "NB3":
+        req_files = st.sidebar.file_uploader("Upload NB3 Recorder (.csv)", type=["csv"], accept_multiple_files=True, key=f"nb3_{st.session_state.uploader_key}")
+        if req_files: recorder_files_data = [(f.name, f.read()) for f in req_files]
+    elif furnace_id == "NB2":
+        req_files = st.sidebar.file_uploader("Upload NB2 Recorder (.DAD)", type=["dad", "DAD"], accept_multiple_files=True, key=f"nb2_{st.session_state.uploader_key}")
+        if req_files: recorder_files_data = [(f.name, f.read()) for f in req_files]
+    elif furnace_id == "NB1":
+        req_files = st.sidebar.file_uploader("Upload NB1 Recorder (.DAD)", type=["dad", "DAD"], accept_multiple_files=True, key=f"nb1_{st.session_state.uploader_key}")
+        if req_files: recorder_files_data = [(f.name, f.read()) for f in req_files]
+        deb_files = st.sidebar.file_uploader("Upload NB1 Debinder (.csv)", type=["csv"], accept_multiple_files=True, key=f"db_{st.session_state.uploader_key}")
+        if deb_files: debinder_files_data = [(f.name, f.read()) for f in deb_files]
+
+else:
+    folder_path = st.sidebar.text_input("ระบุ Path โฟลเดอร์ที่มีไฟล์ Recorder:")
+    if folder_path and os.path.isdir(folder_path):
+        if furnace_id == "NB3":
+            for fp in glob.glob(os.path.join(folder_path, "*.[cC][sS][vV]")):
+                with open(fp, "rb") as f: recorder_files_data.append((os.path.basename(fp), f.read()))
+            st.sidebar.success(f"พบไฟล์ CSV สำหรับ NB3 จำนวน {len(recorder_files_data)} ไฟล์")
+        elif furnace_id == "NB2":
+            for fp in glob.glob(os.path.join(folder_path, "*.[dD][aA][dD]")):
+                with open(fp, "rb") as f: recorder_files_data.append((os.path.basename(fp), f.read()))
+            st.sidebar.success(f"พบไฟล์ DAD สำหรับ NB2 จำนวน {len(recorder_files_data)} ไฟล์")
+        elif furnace_id == "NB1":
+            for fp in glob.glob(os.path.join(folder_path, "*.[dD][aA][dD]")):
+                with open(fp, "rb") as f: recorder_files_data.append((os.path.basename(fp), f.read()))
+            st.sidebar.success(f"พบไฟล์ DAD (Main) จำนวน {len(recorder_files_data)} ไฟล์")
+            for fp in glob.glob(os.path.join(folder_path, "*.[cC][sS][vV]")):
+                with open(fp, "rb") as f: debinder_files_data.append((os.path.basename(fp), f.read()))
+            st.sidebar.success(f"พบไฟล์ CSV (Debinder) จำนวน {len(debinder_files_data)} ไฟล์")
+    elif folder_path:
+        st.sidebar.error("ไม่พบโฟลเดอร์ดังกล่าว กรุณาตรวจสอบ Path อีกครั้ง")
 
 if detected_dt:
     real_start_datetime = detected_dt
@@ -504,30 +527,30 @@ paq_end = df_paq["Real_DateTime"].max()
 tabs = st.tabs(["⏱️ Timeline Sync (PAQ + All Recorders)", "📊 PAQ Original Profile"])
 
 with tabs[0]:
-    if not recorder_files and not debinder_files:
-        st.info(f"👉 กรุณาอัปโหลดไฟล์ Recorder ของ {furnace_id} ที่เมนูด้านซ้าย เพื่อดูกราฟซ้อนทับ (Timeline Sync)")
+    if not recorder_files_data and not debinder_files_data:
+        st.info(f"👉 กรุณาอัปโหลดหรือระบุโฟลเดอร์ไฟล์ Recorder ของ {furnace_id} ที่เมนูด้านซ้าย เพื่อดูกราฟซ้อนทับ (Timeline Sync)")
     elif not detected_dt:
         st.error("❌ **ไม่พบข้อมูลวันที่และเวลา (Collection Started) ในไฟล์ PAQ!**\n\nระบบไม่สามารถนำกราฟไปวางซ้อน (Sync) ได้ เนื่องจากไม่มีจุดอ้างอิงเวลา กรุณากดปุ่ม 'Reset / Clear Data' ด้านซ้ายมือ แล้วเลือกอัปโหลดไฟล์ PAQ ที่มีข้อมูลเวลาสมบูรณ์")
     else:
         df_recorder = pd.DataFrame()
         df_debinder = pd.DataFrame()
         
-        if furnace_id == "NB3" and recorder_files:
-            df_recorder = parse_nb3_csv([(f.name, f.read()) for f in recorder_files])
-        elif furnace_id == "NB2" and recorder_files:
-            df_recorder = process_dad_files([(f.name, f.read()) for f in recorder_files], CH_NB2)
+        if furnace_id == "NB3" and recorder_files_data:
+            df_recorder = parse_nb3_csv(recorder_files_data)
+        elif furnace_id == "NB2" and recorder_files_data:
+            df_recorder = process_dad_files(recorder_files_data, CH_NB2)
         elif furnace_id == "NB1":
-            if recorder_files:
-                df_recorder = process_dad_files([(f.name, f.read()) for f in recorder_files], CH_NB1)
-            if debinder_files:
-                df_debinder = parse_nb1_debinder_csv([(f.name, f.read()) for f in debinder_files])
+            if recorder_files_data:
+                df_recorder = process_dad_files(recorder_files_data, CH_NB1)
+            if debinder_files_data:
+                df_debinder = parse_nb1_debinder_csv(debinder_files_data)
 
         valid_rec = not df_recorder.empty and (paq_start >= df_recorder["DateTime"].min() and paq_end <= df_recorder["DateTime"].max())
         valid_deb = not df_debinder.empty and (paq_start >= df_debinder["DateTime"].min() and paq_end <= df_debinder["DateTime"].max())
 
         if (not df_recorder.empty and not valid_rec) or (not df_debinder.empty and not valid_deb):
-            st.error("⚠️ คำเตือน: วัน/เวลาของไฟล์ PAQ ไม่อยู่ในช่วงข้อมูล Recorder หรือ Debinder ที่อัปโหลด")
-            st.info("👉 กรุณาอัปโหลดไฟล์ Recorder ชุดใหม่ให้ตรง หรือตรวจสอบไฟล์อีกครั้ง")
+            st.error("⚠️ คำเตือน: วัน/เวลาของไฟล์ PAQ ไม่อยู่ในช่วงข้อมูล Recorder หรือ Debinder ที่โหลดมา")
+            st.info("👉 กรุณาเปลี่ยนไฟล์ Recorder หรือระบุโฟลเดอร์ใหม่ให้ตรงกับช่วงเวลา")
         
         elif not df_recorder.empty or not df_debinder.empty:
             st.success(f"✅ วันและเวลาของ PAQ ({paq_start.strftime('%H:%M')}) อยู่ในช่วงข้อมูลของ Recorder (นำกราฟซ้อนกันได้)")
