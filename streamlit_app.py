@@ -149,14 +149,23 @@ def process_paq_file(file_bytes, filename):
     recipe_corpus = f"{filename} " + " ".join([clean_paq_text(s) for s in raw_texts])
     furnace_id, furnace_variant = "NB3", "NB3"
     
-    if re.search(r'\b(KE8|M2|EVO)\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB3", "NB3 (KE8 : M2/EVO)"
-    elif re.search(r'\bRAD\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB1", "NB1 (RAD)"
-    elif re.search(r'\b(CDS|KN9|12SHP)\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB1", "NB1 (CDS/KN9/12SHP)"
-    elif re.search(r'\bBTM\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB3", "NB3 (BTM)"
-    elif re.search(r'\b(Utahc|UT)\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB2", "NB2 (Utahc)"
-    elif re.search(r'\b(Tahc|G2|NB2)\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB2", "NB2 (Tahc)"
-    elif re.search(r'\bNB3\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB3", "NB3"
-    elif re.search(r'\bWK\d{1,2}\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB1", "NB1 (Standard)"
+    # 🔴 ปรับลำดับความสำคัญให้โมเดล NB1 (12SHP, CDS ฯลฯ) ถูกตรวจจับได้ก่อนเสมอ
+    if re.search(r'\b(CDS|KN9|12SHP|DNGA|P42QR|P42V|SU2|F44|Y4L|CMFB|MY25|CE|D12A)\b', recipe_corpus, re.IGNORECASE): 
+        furnace_id, furnace_variant = "NB1", "NB1 (CDS/KN9/12SHP)"
+    elif re.search(r'\b(KE8|M2|EVO)\b', recipe_corpus, re.IGNORECASE): 
+        furnace_id, furnace_variant = "NB3", "NB3 (KE8 : M2/EVO)"
+    elif re.search(r'\bRAD\b', recipe_corpus, re.IGNORECASE): 
+        furnace_id, furnace_variant = "NB1", "NB1 (RAD)"
+    elif re.search(r'\bBTM\b', recipe_corpus, re.IGNORECASE): 
+        furnace_id, furnace_variant = "NB3", "NB3 (BTM)"
+    elif re.search(r'\b(Utahc|UT)\b', recipe_corpus, re.IGNORECASE): 
+        furnace_id, furnace_variant = "NB2", "NB2 (Utahc)"
+    elif re.search(r'\b(Tahc|G2|NB2)\b', recipe_corpus, re.IGNORECASE): 
+        furnace_id, furnace_variant = "NB2", "NB2 (Tahc)"
+    elif re.search(r'\bNB3\b', recipe_corpus, re.IGNORECASE): 
+        furnace_id, furnace_variant = "NB3", "NB3"
+    elif re.search(r'\bWK\d{1,2}\b', recipe_corpus, re.IGNORECASE): 
+        furnace_id, furnace_variant = "NB1", "NB1 (Standard)"
     else:
         f_match = re.search(r'NB\s*Furnace\s*0?([123])\b|NB-0?([123])\b', recipe_corpus, re.IGNORECASE)
         if f_match: 
@@ -202,7 +211,7 @@ def parse_dad(raw: bytes, active_channels):
         hdr  = raw[base:base+8]
         if len(hdr) < 8: break
         yr, mo, dy, hr, mn, sc = hdr[0], hdr[1], hdr[2], hdr[3], hdr[4], hdr[5]
-        if not (0 <= yr <= 99 and 1 <= mo <= 12 and 1 <= dy <= 31 and 0 <= hr <= 23 and 0 <= mn <= 59 and 0 <= sc <= 59): continue
+        if not (0 <= yr <= 99 and 1 <= mo <= 12 and 1 <= dy <= 31 and 0 <= hr <= 23 and 0 <= mn <= 59 and 0 sc <= 59): continue
         parsed_yr = (2000 + yr) if yr < 80 else (1900 + yr)
         try: ts = datetime(parsed_yr, mo, dy, hr, mn, sc)
         except ValueError: continue
@@ -335,7 +344,7 @@ def parse_nb1_debinder_csv(files_data):
 def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=None, secondary_y_title=None, height=520, paq_df=None, paq_cols=None, paq_colors=None, y_range=None, zones=None, line_speed=None, paq_start_time=None, group_colors=None, brazing_temp=None):
     fig = make_subplots(specs=[[{"secondary_y": bool(secondary_y_cols)}]])
     
-    # 1. วาดแถบสีกระบวนการเตา (Process Zones) เป็นพื้นหลังสำหรับ "ทุกกราฟ"
+    # 1. วาดแถบสีกระบวนการเตา (Process Zones) เป็นพื้นหลัง
     if zones and line_speed and paq_start_time and group_colors:
         for z in zones:
             z_color = group_colors.get(z["group"], "rgba(200, 200, 200, 0.2)")
