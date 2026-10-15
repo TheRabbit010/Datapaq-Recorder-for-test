@@ -321,46 +321,63 @@ def parse_nb1_debinder_csv(files_data):
     return pd.concat(combined_dfs, ignore_index=True).drop_duplicates("DateTime").sort_values("DateTime").reset_index(drop=True)
 
 # ==============================================================================
-# HELPER FOR DRAWING SUB-CHARTS (WITH PAQ OVERLAY & Y-AXIS SCALING)
+# HELPER FOR DRAWING SUB-CHARTS (PROFESSIONAL STYLING)
 # ==============================================================================
-def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=None, secondary_y_title=None, height=500, paq_df=None, paq_cols=None, paq_colors=None, y_range=None):
+def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=None, secondary_y_title=None, height=520, paq_df=None, paq_cols=None, paq_colors=None, y_range=None):
     fig = make_subplots(specs=[[{"secondary_y": bool(secondary_y_cols)}]])
     
-    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2"]
+    # 🎨 ปรับชุดสีสำหรับ Recorder ให้มองเห็นชัดเจน เป็นมืออาชีพ
+    rec_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2"]
     
-    # 1. วาดกราฟเส้นของ Recorder (Background)
+    # 1. กราฟ Recorder (Background) -> ปรับเป็นเส้นประยาว (dash) หนา 2 และความเข้ม 0.9
     for i, col in enumerate(y_cols):
         if col in df_rec.columns:
-            fig.add_trace(go.Scatter(x=df_rec["DateTime"], y=df_rec[col], name=f"REC: {col}", mode="lines", line=dict(width=1.5, dash="dot", color=colors[i % len(colors)]), opacity=0.6), secondary_y=False)
+            fig.add_trace(go.Scatter(
+                x=df_rec["DateTime"], y=df_rec[col], 
+                name=f"REC: {col}", mode="lines", 
+                line=dict(width=2, dash="dash", color=rec_colors[i % len(rec_colors)]), 
+                opacity=0.9
+            ), secondary_y=False)
             
-    # 2. วาดกราฟเส้นของ Recorder แบบแกน Y รอง (เช่น N2 Flow)
+    # 2. กราฟ Recorder แกนรอง (เช่น N2) -> ใช้เส้นประจุด (dot) ให้ต่างกัน
     if secondary_y_cols:
-        sec_colors = ["#17becf", "#bcbd22"]
+        sec_colors = ["#17becf", "#bcbd22", "#ff9896"]
         for i, col in enumerate(secondary_y_cols):
             if col in df_rec.columns:
-                fig.add_trace(go.Scatter(x=df_rec["DateTime"], y=df_rec[col], name=f"REC: {col}", mode="lines", line=dict(width=2, dash="dash", color=sec_colors[i % len(sec_colors)])), secondary_y=True)
+                fig.add_trace(go.Scatter(
+                    x=df_rec["DateTime"], y=df_rec[col], 
+                    name=f"REC: {col}", mode="lines", 
+                    line=dict(width=2, dash="dot", color=sec_colors[i % len(sec_colors)]),
+                    opacity=0.9
+                ), secondary_y=True)
                 
-    # 3. วาดกราฟ PAQ ซ้อนทับ (Foreground) สำหรับ "ทุกกราฟ"
+    # 3. กราฟ PAQ (Foreground) -> เส้นทึบหนา 2.5 ชัดเจน
     if paq_df is not None and paq_cols is not None:
         for col in paq_cols:
             c = paq_colors.get(col) if paq_colors else None
-            fig.add_trace(go.Scatter(x=paq_df["Real_DateTime"], y=paq_df[col], name=f"PAQ: {col}", mode="lines", line=dict(color=c, width=2.5)), secondary_y=False)
+            fig.add_trace(go.Scatter(
+                x=paq_df["Real_DateTime"], y=paq_df[col], 
+                name=f"PAQ: {col}", mode="lines", 
+                line=dict(color=c, width=2.5)
+            ), secondary_y=False)
 
-    # 4. ตั้งค่าแกน Y หลัก (บังคับสเกล 0-650°C)
-    layout_yaxis = dict(title=y_title)
+    # 4. ตั้งค่าแกน Y และ Layout หลัก
+    layout_yaxis = dict(title=y_title, showgrid=True, zeroline=False)
     if y_range:
         layout_yaxis["range"] = y_range
 
     fig.update_layout(
-        title=title, hovermode="x unified", height=height,
-        xaxis=dict(title="Real Date & Time", type="date", range=x_range),
+        title=dict(text=title, font=dict(size=18, weight="bold")), 
+        hovermode="x unified", 
+        height=height,
+        xaxis=dict(title="Real Date & Time", type="date", range=x_range, showgrid=True),
         yaxis=layout_yaxis,
-        legend=dict(orientation="v", yanchor="middle", y=0.5, xanchor="left", x=1.02)
+        legend=dict(orientation="v", yanchor="middle", y=0.5, xanchor="left", x=1.02, font=dict(size=12)),
+        margin=dict(l=60, r=120, t=60, b=40)
     )
     
-    # 5. ตั้งค่าแกน Y รอง (ถ้ามี)
     if secondary_y_cols:
-        fig.update_layout(yaxis2=dict(title=secondary_y_title, overlaying="y", side="right"))
+        fig.update_layout(yaxis2=dict(title=secondary_y_title, overlaying="y", side="right", showgrid=False))
         
     st.plotly_chart(fig, use_container_width=True)
 
@@ -448,58 +465,62 @@ with tabs[0]:
             st.success(f"✅ วันและเวลาของ PAQ ({paq_start.strftime('%H:%M')}) อยู่ในช่วงข้อมูลของ Recorder (นำกราฟซ้อนกันได้)")
             x_range_view = [paq_start - timedelta(minutes=3), paq_end + timedelta(minutes=3)]
             
+            # บังคับสเกลแกน Y ที่ 0-650 ตลอด
+            forced_y_range = [0, 650]
+            
             # =======================================================
-            # 🔴 1. CHART: PAQ vs Recorder Top Zones
+            # 1. Recorder: Top Zones
             # =======================================================
             if not df_recorder.empty:
                 rec_top_cols = [c for c in df_recorder.columns if "Top Z#" in c]
-                draw_line_chart(df_recorder, rec_top_cols, f"1. TIMELINE SYNC: PAQ + {furnace_id} Recorder (Top Zones)", "Temperature (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=[0, 650])
+                if rec_top_cols:
+                    draw_line_chart(df_recorder, rec_top_cols, "1. Recorder: Top Zones", "Temperature (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=forced_y_range)
             
             # =======================================================
-            # 🔴 2. CHART: Recorder Bottom Zones
+            # 2. Recorder: Bottom Zones
             # =======================================================
             if not df_recorder.empty:
                 bot_cols = [c for c in df_recorder.columns if "Bottom Z#" in c]
                 if bot_cols:
-                    draw_line_chart(df_recorder, bot_cols, "2. Recorder: Bottom Zones", "Temperature (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=[0, 650])
+                    draw_line_chart(df_recorder, bot_cols, "2. Recorder: Bottom Zones", "Temperature (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=forced_y_range)
             
             # =======================================================
-            # 🔴 3. CHART: Recorder Dryer Zones
+            # 3. Recorder: Dryer Zones
             # =======================================================
             if not df_recorder.empty:
                 dry_cols = [c for c in df_recorder.columns if "Dryer" in c or "DRYOFF" in c]
                 if dry_cols:
-                    draw_line_chart(df_recorder, dry_cols, "3. Recorder: Dryer Zones", "Temperature (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=[0, 650])
+                    draw_line_chart(df_recorder, dry_cols, "3. Recorder: Dryer Zones", "Temperature (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=forced_y_range)
                     
             # =======================================================
-            # 🔴 4. CHART: Debinder Zones (เฉพาะ NB1)
+            # 4. Recorder: Debinder Zones (เฉพาะ NB1)
             # =======================================================
             if furnace_id == "NB1" and not df_debinder.empty:
                 db_cols = [c for c in df_debinder.columns if "Zone #" in c]
-                draw_line_chart(df_debinder, db_cols, "4. Recorder: Debinder Zones (NB1)", "Temperature (°C)", x_range_view, ["Combustion Air Temp"], "Comb Air Temp (°C)", paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=[0, 650])
+                draw_line_chart(df_debinder, db_cols, "4. Recorder: Debinder Zones (NB1)", "Temperature (°C)", x_range_view, ["Combustion Air Temp"], "Comb Air Temp (°C)", paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=forced_y_range)
                 
             # =======================================================
-            # 🔴 5. CHART: O2 ppm & N2 Flow Rate
+            # 5. Recorder: Oxygen (ppm) & N2 Flow Rate
             # =======================================================
             if not df_recorder.empty:
                 o2_cols = [c for c in df_recorder.columns if "O2" in c or "Oxygen" in c]
                 n2_cols = [c for c in df_recorder.columns if "N2" in c]
                 if o2_cols or n2_cols:
-                    # บังคับ Y-axis หลัก 0-650 ด้วยเช่นกันเพื่อรองรับการซ้อนเส้น PAQ Temp
-                    draw_line_chart(df_recorder, o2_cols, "5. Recorder: Oxygen (ppm) & N2 Flow Rate", "Oxygen (ppm) / PAQ Temp (°C)", x_range_view, n2_cols, "N2 Flow Rate", paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=[0, 650])
+                    # คง Y หลักที่ 0-650 เพื่อรองรับการโชว์ PAQ Temp ซ้อน
+                    draw_line_chart(df_recorder, o2_cols, "5. Recorder: Oxygen (ppm) & N2 Flow Rate", "Oxygen (ppm) / PAQ Temp (°C)", x_range_view, n2_cols, "N2 Flow Rate", paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=forced_y_range)
             
             # =======================================================
-            # 🔴 6. CHART: Dew Point (NB1) / Cool Water (NB3)
+            # 6. Recorder: Dew Point (NB1) / Cool Water (NB3)
             # =======================================================
             if not df_recorder.empty:
                 dew_cols = [c for c in df_recorder.columns if "DEW POINT" in c]
                 cool_cols = [c for c in df_recorder.columns if "COOL WATER" in c]
                 
+                # ถ้ามี Dew Point, อาจจะติดลบได้ เลยให้ Y range ต่ำกว่า 0 
                 if dew_cols:
-                    # Dew Point มักจะติดลบ จึงเผื่อ Range เป็น -100 ถึง 650
-                    draw_line_chart(df_recorder, dew_cols, "6. Recorder: Dew Point", "Dew Point (Cdp)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=[-100, 650])
+                    draw_line_chart(df_recorder, dew_cols, "6. Recorder: Dew Point", "Dew Point (Cdp) / PAQ Temp (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=[-100, 650])
                 if cool_cols:
-                    draw_line_chart(df_recorder, cool_cols, "6. Recorder: Cool Water Temp", "Temperature (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=[0, 650])
+                    draw_line_chart(df_recorder, cool_cols, "6. Recorder: Cool Water Temp", "Temperature (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=forced_y_range)
 
 with tabs[1]:
     st.subheader(f"Global Furnace Profile (Standalone) - {f_variant}")
@@ -507,6 +528,6 @@ with tabs[1]:
     for col in probe_cols:
         fig_orig.add_trace(go.Scatter(x=df_paq["Time_Seconds"], y=df_paq[col], name=col, line=dict(color=PROBE_COLORS.get(col))))
     
-    # បังคับสเกล 0-650°C สำหรับกราฟในแท็บที่ 2 ด้วย
+    # บังคับสเกล 0-650°C สำหรับกราฟ PAQ เดี่ยวด้วย
     fig_orig.update_layout(title=f"Original PAQ Profile: {data_paq['filename']}", xaxis_title="Time (Seconds)", yaxis_title="Temperature (°C)", yaxis=dict(range=[0, 650]), height=500, hovermode="x unified")
     st.plotly_chart(fig_orig, use_container_width=True)
