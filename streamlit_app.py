@@ -46,6 +46,7 @@ FURNACE_CONFIGS = {
     }
 }
 
+# YOKOGAWA DAD CHANNELS
 CH_NB1 = [
     ('CH001', 'Top Z#1', '°C'), ('CH002', 'Top Z#2', '°C'), ('CH003', 'Top Z#3', '°C'), ('CH004', 'Top Z#4', '°C'), ('CH005', 'Top Z#5', '°C'), ('CH006', 'Top Z#6', '°C'), ('CH007', 'Top Z#7', '°C'),
     ('CH008', 'Bottom Z#1', '°C'), ('CH009', 'Bottom Z#2', '°C'), ('CH010', 'Bottom Z#3', '°C'), ('CH011', 'Bottom Z#4', '°C'), ('CH012', 'Bottom Z#5', '°C'), ('CH013', 'Bottom Z#6', '°C'), ('CH014', 'Bottom Z#7', '°C'),
@@ -107,34 +108,21 @@ def clean_paq_text(raw_text):
     return " ".join(cleaned_parts)
 
 def detect_furnace_variant(filename, recipe_corpus):
-    """ระบุชนิดเตาอย่างเที่ยงตรงสูง โดยยึดชื่อไฟล์เป็นหลักก่อนเสมอ"""
     fn_upper = filename.upper()
-    
-    # 1. เช็คโมเดลเฉพาะจากชื่อไฟล์โดยตรง (ความสำคัญสูงสุด)
-    # กลุ่ม NB3
     if any(k in fn_upper for k in ["EVO", "KE8", "BTM"]) or re.search(r'\bM2\b', fn_upper):
-        if "BTM" in fn_upper:
-            return "NB3", "NB3 (BTM)"
+        if "BTM" in fn_upper: return "NB3", "NB3 (BTM)"
         return "NB3", "NB3 (KE8 : M2/EVO)"
-    
-    # กลุ่ม NB2
     if any(k in fn_upper for k in ["UTAHC", "TAHC", "G2"]):
-        if "UTAHC" in fn_upper:
-            return "NB2", "NB2 (Utahc)"
+        if "UTAHC" in fn_upper: return "NB2", "NB2 (Utahc)"
         return "NB2", "NB2 (Tahc)"
-        
-    # กลุ่ม NB1
     if any(k in fn_upper for k in ["RAD", "12SHP", "CMFB", "CDS", "KN9", "DNGA", "P42QR", "P42V", "SU2", "F44", "Y4L", "MY25", "CE", "D12A"]):
-        if "RAD" in fn_upper:
-            return "NB1", "NB1 (RAD)"
+        if "RAD" in fn_upper: return "NB1", "NB1 (RAD)"
         return "NB1", "NB1 (CDS/KN9/12SHP)"
 
-    # ตรวจสอบชื่อเตาตรงตัวในชื่อไฟล์
     if "NB3" in fn_upper: return "NB3", "NB3"
     if "NB2" in fn_upper: return "NB2", "NB2 (Tahc)"
     if "NB1" in fn_upper: return "NB1", "NB1 (Standard)"
 
-    # 2. กรณีชื่อไฟล์ไม่มี Keyword ให้ใช้การตรวจจับจากเนื้อหา Recipe ตาม Code 1
     if re.search(r'\bRAD\b', recipe_corpus, re.IGNORECASE): return "NB1", "NB1 (RAD)"
     elif re.search(r'\bUtahc\b', recipe_corpus, re.IGNORECASE): return "NB2", "NB2 (Utahc)"
     elif re.search(r'\b(Tahc|G2|NB2)\b', recipe_corpus, re.IGNORECASE): return "NB2", "NB2 (Tahc)"
@@ -147,7 +135,6 @@ def detect_furnace_variant(filename, recipe_corpus):
         if f_match: 
             found_num = next(g for g in f_match.groups() if g is not None)
             return f"NB{found_num}", f"NB{found_num}"
-            
     return "NB1", "NB1 (Standard)"
 
 @st.cache_data
@@ -195,7 +182,6 @@ def process_paq_file(file_bytes, filename):
     recipe_corpus = f"{filename} " + " ".join([clean_paq_text(s) for s in raw_texts])
     furnace_id, furnace_variant = detect_furnace_variant(filename, recipe_corpus)
 
-    # 🔴 ดึงวันที่/เวลา Collection Started และ #paqfile start time
     raw_full_text = " ".join(raw_texts)
     detected_paq_dt = None
     
@@ -217,7 +203,6 @@ def process_paq_file(file_bytes, filename):
                     break
             except: continue
 
-    # ดึงวันที่จากชื่อไฟล์เป็นตัวช่วยสำรอง (เช่น 20261001 หรือ 06102026)
     inferred_date = None
     m_ymd = re.search(r'\b(20\d{2})([01]\d)([0-3]\d)\b', filename)
     if m_ymd:
@@ -238,7 +223,7 @@ def process_paq_file(file_bytes, filename):
     }
 
 # ==============================================================================
-# RECORDER PARSING FUNCTIONS
+# RECORDER PARSING FUNCTIONS (.DAD AND .CSV)
 # ==============================================================================
 def find_dad_params(raw):
     if len(raw) < 5000: return None, None 
@@ -258,7 +243,7 @@ def find_dad_params(raw):
                 if valid_chain: return offset, rs
     return None, None 
 
-def parse_dad(raw: bytes, active_channels):
+def parse_dad(raw: bytes, active_channels, mode_key='_max'):
     records = []
     offset, record_size = find_dad_params(raw)
     if offset is None or record_size is None: return records 
@@ -287,19 +272,30 @@ def parse_dad(raw: bytes, active_channels):
             
             divisor = 1.0 if name == 'N2 .1' else 10.0
             if v1 not in (-32768, -32767, 32767, 32766) and (-32000 < v1 < 32000):
-                rec[name] = max_v / divisor
+                if mode_key == '_max': rec[name] = max_v / divisor
+                elif mode_key == '_min': rec[name] = min_v / divisor
+                else: rec[name] = (min_v + max_v) / (2.0 * divisor)
         records.append(rec)
     return records
 
 @st.cache_data
-def process_dad_files(files_data, active_channels):
+def process_dad_files(files_data, active_channels, mode_key='_max'):
     all_records = []
     for fname, raw in files_data:
-        recs = parse_dad(raw, active_channels)
+        recs = parse_dad(raw, active_channels, mode_key)
         if len(recs) > 10: all_records.extend(recs[3:-2])
         else: all_records.extend(recs)
     if not all_records: return pd.DataFrame()
-    df = pd.DataFrame(all_records).drop_duplicates('DateTime').sort_values('DateTime').reset_index(drop=True)
+    
+    # 🔴 นำโค้ดการทำ Rolling Median (เพื่อกำจัด Noise) กลับมาใช้ตาม Code เดิมของคุณ
+    df = pd.DataFrame(all_records)
+    if not df.empty:
+        df = df.drop_duplicates('DateTime').sort_values('DateTime')
+        df.set_index('DateTime', inplace=True)
+        for col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+            df[col] = df[col].rolling(window=3, min_periods=1, center=True).median()
+        df = df.reset_index()
     return df
 
 @st.cache_data
@@ -431,8 +427,8 @@ def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=No
             fig.add_trace(go.Scatter(
                 x=df_rec["DateTime"], y=df_rec[col], 
                 name=f"REC: {col}", mode="lines", 
-                line=dict(width=1.5, color=rec_colors[i % len(rec_colors)]), 
-                opacity=0.8
+                line=dict(width=1.5, dash="dash", color=rec_colors[i % len(rec_colors)]), 
+                opacity=0.9
             ), secondary_y=False)
             
     if secondary_y_cols:
@@ -442,8 +438,8 @@ def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=No
                 fig.add_trace(go.Scatter(
                     x=df_rec["DateTime"], y=df_rec[col], 
                     name=f"REC: {col}", mode="lines", 
-                    line=dict(width=1.5, color=sec_colors[i % len(sec_colors)]), 
-                    opacity=0.8
+                    line=dict(width=2, dash="dot", color=sec_colors[i % len(sec_colors)]),
+                    opacity=0.9
                 ), secondary_y=True)
                 
     if paq_df is not None and paq_cols is not None:
@@ -509,21 +505,16 @@ paq_filename = data_paq["filename"]
 detected_dt = data_paq.get("detected_datetime")
 inferred_d = data_paq.get("inferred_date")
 
-# 🔴 แสดงสถานะพร้อม Collection Started
 if detected_dt:
     dt_str = detected_dt.strftime('%d/%m/%Y %H:%M:%S')
     st.success(f"✅ **PAQ File Loaded:** {paq_filename} | **Detected Furnace:** {f_variant} | 🕰️ **Collection Started:** {dt_str}")
 else:
     st.success(f"✅ **PAQ File Loaded:** {paq_filename} | **Detected Furnace:** {f_variant}")
 
-# ==========================================
-# 🔴 เมนูกำหนดวัน/เวลา PAQ ด้วยตนเอง (Align PAQ Time)
-# ==========================================
 st.sidebar.markdown("---")
 st.sidebar.header("⏱️ Align PAQ Time")
 st.sidebar.caption("ระบุหรือตรวจสอบวัน/เวลาที่เข้าเตา เพื่อใช้จับคู่กับ Recorder")
 
-# ตั้งค่าเริ่มต้นของ Date และ Time จากการสกัด
 if detected_dt:
     init_date = detected_dt.date()
     init_time = detected_dt.time()
@@ -536,12 +527,8 @@ else:
 
 paq_real_start = st.sidebar.date_input("PAQ Run Date", value=init_date)
 paq_real_time = st.sidebar.time_input("PAQ Start Time (เข้าเตา)", value=init_time)
-
 real_start_datetime = datetime.combine(paq_real_start, paq_real_time)
 
-# ==========================================
-# 🔴 เมนูอัปโหลดไฟล์ Recorder ตามชนิดเตาที่ตรวจพบ
-# ==========================================
 st.sidebar.markdown("---")
 st.sidebar.header(f"📁 2. Upload Recorder Data for {furnace_id}")
 
@@ -575,7 +562,7 @@ with tabs[0]:
             df_recorder = process_dad_files([(f.name, f.read()) for f in recorder_files], CH_NB2)
         elif furnace_id == "NB1":
             if recorder_files:
-                df_recorder = process_dad_files([(f.name, f.read()) for f in recorder_files], CH_NB1)
+                df_recorder = process_dad_files([(f.name, f.read()) for f in recorder_files], CH_NB1, mode_key='_max')
             if debinder_files:
                 df_debinder = parse_nb1_debinder_csv([(f.name, f.read()) for f in debinder_files])
 
