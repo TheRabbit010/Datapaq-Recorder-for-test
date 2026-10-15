@@ -480,15 +480,13 @@ elif furnace_id == "NB1":
     recorder_files = st.sidebar.file_uploader("Upload NB1 Recorder (.DAD)", type=["dad", "DAD"], accept_multiple_files=True, key=f"nb1_{st.session_state.uploader_key}")
     debinder_files = st.sidebar.file_uploader("Upload NB1 Debinder (.csv)", type=["csv"], accept_multiple_files=True, key=f"db_{st.session_state.uploader_key}")
 
+# 🔴 ระบบออโต้ดึงเวลาเข้าเตา โดยซ่อน Error ไว้จนกว่าจะมีการอัปโหลด Recorder
 if detected_dt:
     real_start_datetime = detected_dt
     st.sidebar.markdown("---")
     st.sidebar.success(f"🕰️ เวลาเข้าเตาอัตโนมัติ (PAQ):\n\n**{detected_dt.strftime('%d/%m/%Y %H:%M:%S')}**")
 else:
-    st.sidebar.markdown("---")
-    st.sidebar.error("❌ **ไม่พบข้อมูลเวลาเข้าเตา!**\n\nระบบไม่สามารถอ่านค่า Collection Started จากไฟล์ PAQ นี้ได้ กรุณาอัปโหลดไฟล์ใหม่")
-    st.error("❌ **ไม่พบข้อมูลวันที่และเวลา (Collection Started) ในไฟล์ PAQ!**\n\nระบบไม่สามารถนำกราฟไปวางซ้อน (Sync) ได้ กรุณากดปุ่ม 'Reset / Clear Data' แล้วเลือกอัปโหลดไฟล์ PAQ ที่มีข้อมูลเวลาสมบูรณ์")
-    st.stop()
+    real_start_datetime = datetime.now()
 
 df_paq["Real_DateTime"] = real_start_datetime + pd.to_timedelta(df_paq["Time_Seconds"], unit="s")
 paq_start = df_paq["Real_DateTime"].min()
@@ -499,6 +497,9 @@ tabs = st.tabs(["⏱️ Timeline Sync (PAQ + All Recorders)", "📊 PAQ Original
 with tabs[0]:
     if not recorder_files and not debinder_files:
         st.info(f"👉 กรุณาอัปโหลดไฟล์ Recorder ของ {furnace_id} ที่เมนูด้านซ้าย เพื่อดูกราฟซ้อนทับ (Timeline Sync)")
+    elif not detected_dt:
+        # หากผู้ใช้อัปโหลด Recorder แต่ไฟล์ PAQ ดึงเวลาไม่ได้ ให้โชว์แจ้งเตือนสีแดงตรงนี้แทน
+        st.error("❌ **ไม่พบข้อมูลวันที่และเวลา (Collection Started) ในไฟล์ PAQ!**\n\nระบบไม่สามารถนำกราฟไปวางซ้อน (Sync) ได้ เนื่องจากไม่มีจุดอ้างอิงเวลา กรุณากดปุ่ม 'Reset / Clear Data' ด้านซ้ายมือ แล้วเลือกอัปโหลดไฟล์ PAQ ที่มีข้อมูลเวลาสมบูรณ์")
     else:
         df_recorder = pd.DataFrame()
         df_debinder = pd.DataFrame()
