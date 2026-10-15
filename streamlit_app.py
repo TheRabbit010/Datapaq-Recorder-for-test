@@ -36,7 +36,6 @@ FURNACE_CONFIGS = {
     "NB3": {"line_speed_mpm": 1.270, "trigger_temp_brazing": 577.0}
 }
 
-# 🔴 กู้คืน Channel ทั้งหมดสำหรับ NB1 และ NB2 DAD Files
 CH_NB1 = [
     ('CH001', 'Top Z#1', '°C'), ('CH002', 'Top Z#2', '°C'), ('CH003', 'Top Z#3', '°C'), ('CH004', 'Top Z#4', '°C'), ('CH005', 'Top Z#5', '°C'), ('CH006', 'Top Z#6', '°C'), ('CH007', 'Top Z#7', '°C'),
     ('CH008', 'Bottom Z#1', '°C'), ('CH009', 'Bottom Z#2', '°C'), ('CH010', 'Bottom Z#3', '°C'), ('CH011', 'Bottom Z#4', '°C'), ('CH012', 'Bottom Z#5', '°C'), ('CH013', 'Bottom Z#6', '°C'), ('CH014', 'Bottom Z#7', '°C'),
@@ -137,27 +136,17 @@ def process_paq_file(file_bytes, filename):
     
     probe_cols = [f"PB#{i}" for i in range(1, 11) if f"PB#{i}" in df_master.columns]
     
-    # Furnace Detection Logic
     recipe_corpus = f"{filename} " + " ".join([clean_paq_text(s) for s in raw_texts])
-    
     furnace_id, furnace_variant = "NB3", "NB3"
     
-    if re.search(r'\b(KE8|M2|EVO)\b', recipe_corpus, re.IGNORECASE): 
-        furnace_id, furnace_variant = "NB3", "NB3 (KE8 : M2/EVO)"
-    elif re.search(r'\bRAD\b', recipe_corpus, re.IGNORECASE): 
-        furnace_id, furnace_variant = "NB1", "NB1 (RAD)"
-    elif re.search(r'\b(CDS|KN9|12SHP)\b', recipe_corpus, re.IGNORECASE): 
-        furnace_id, furnace_variant = "NB1", "NB1 (CDS/KN9/12SHP)"
-    elif re.search(r'\bBTM\b', recipe_corpus, re.IGNORECASE): 
-        furnace_id, furnace_variant = "NB3", "NB3 (BTM)"
-    elif re.search(r'\b(Utahc|UT)\b', recipe_corpus, re.IGNORECASE): 
-        furnace_id, furnace_variant = "NB2", "NB2 (Utahc)"
-    elif re.search(r'\b(Tahc|G2|NB2)\b', recipe_corpus, re.IGNORECASE): 
-        furnace_id, furnace_variant = "NB2", "NB2 (Tahc)"
-    elif re.search(r'\bNB3\b', recipe_corpus, re.IGNORECASE): 
-        furnace_id, furnace_variant = "NB3", "NB3"
-    elif re.search(r'\bWK\d{1,2}\b', recipe_corpus, re.IGNORECASE): 
-        furnace_id, furnace_variant = "NB1", "NB1 (Standard)"
+    if re.search(r'\b(KE8|M2|EVO)\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB3", "NB3 (KE8 : M2/EVO)"
+    elif re.search(r'\bRAD\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB1", "NB1 (RAD)"
+    elif re.search(r'\b(CDS|KN9|12SHP)\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB1", "NB1 (CDS/KN9/12SHP)"
+    elif re.search(r'\bBTM\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB3", "NB3 (BTM)"
+    elif re.search(r'\b(Utahc|UT)\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB2", "NB2 (Utahc)"
+    elif re.search(r'\b(Tahc|G2|NB2)\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB2", "NB2 (Tahc)"
+    elif re.search(r'\bNB3\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB3", "NB3"
+    elif re.search(r'\bWK\d{1,2}\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB1", "NB1 (Standard)"
     else:
         f_match = re.search(r'NB\s*Furnace\s*0?([123])\b|NB-0?([123])\b', recipe_corpus, re.IGNORECASE)
         if f_match: 
@@ -279,7 +268,6 @@ def parse_nb3_csv(files_data):
                 return pd.to_numeric(data_df[idx], errors="coerce")
             return pd.Series([None] * len(data_df))
 
-        # 🔴 กู้คืนการอ่านข้อมูลให้ครบถ้วนสำหรับ NB3
         for i in range(1, 8):
             c = next((idx for idx, name in enumerate(endheader_cols) if re.search(rf'1\)TH_CH{i}Max', name, re.I)), None)
             df[f"Top Z#{i}"] = extract(c, 2 + (i - 1) * 3)
@@ -332,31 +320,45 @@ def parse_nb1_debinder_csv(files_data):
     if not combined_dfs: return pd.DataFrame()
     return pd.concat(combined_dfs, ignore_index=True).drop_duplicates("DateTime").sort_values("DateTime").reset_index(drop=True)
 
-
 # ==============================================================================
-# HELPER FOR DRAWING SUB-CHARTS
+# HELPER FOR DRAWING SUB-CHARTS (WITH PAQ OVERLAY & Y-AXIS SCALING)
 # ==============================================================================
-def draw_line_chart(df, y_cols, title, y_title, x_range, secondary_y_cols=None, secondary_y_title=None, height=450):
+def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=None, secondary_y_title=None, height=500, paq_df=None, paq_cols=None, paq_colors=None, y_range=None):
     fig = make_subplots(specs=[[{"secondary_y": bool(secondary_y_cols)}]])
     
     colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2"]
     
+    # 1. วาดกราฟเส้นของ Recorder (Background)
     for i, col in enumerate(y_cols):
-        if col in df.columns:
-            fig.add_trace(go.Scatter(x=df["DateTime"], y=df[col], name=col, mode="lines", line=dict(width=2, color=colors[i % len(colors)])), secondary_y=False)
+        if col in df_rec.columns:
+            fig.add_trace(go.Scatter(x=df_rec["DateTime"], y=df_rec[col], name=f"REC: {col}", mode="lines", line=dict(width=1.5, dash="dot", color=colors[i % len(colors)]), opacity=0.6), secondary_y=False)
             
+    # 2. วาดกราฟเส้นของ Recorder แบบแกน Y รอง (เช่น N2 Flow)
     if secondary_y_cols:
         sec_colors = ["#17becf", "#bcbd22"]
         for i, col in enumerate(secondary_y_cols):
-            if col in df.columns:
-                fig.add_trace(go.Scatter(x=df["DateTime"], y=df[col], name=col, mode="lines", line=dict(width=2, dash="dash", color=sec_colors[i % len(sec_colors)])), secondary_y=True)
+            if col in df_rec.columns:
+                fig.add_trace(go.Scatter(x=df_rec["DateTime"], y=df_rec[col], name=f"REC: {col}", mode="lines", line=dict(width=2, dash="dash", color=sec_colors[i % len(sec_colors)])), secondary_y=True)
                 
+    # 3. วาดกราฟ PAQ ซ้อนทับ (Foreground) สำหรับ "ทุกกราฟ"
+    if paq_df is not None and paq_cols is not None:
+        for col in paq_cols:
+            c = paq_colors.get(col) if paq_colors else None
+            fig.add_trace(go.Scatter(x=paq_df["Real_DateTime"], y=paq_df[col], name=f"PAQ: {col}", mode="lines", line=dict(color=c, width=2.5)), secondary_y=False)
+
+    # 4. ตั้งค่าแกน Y หลัก (บังคับสเกล 0-650°C)
+    layout_yaxis = dict(title=y_title)
+    if y_range:
+        layout_yaxis["range"] = y_range
+
     fig.update_layout(
         title=title, hovermode="x unified", height=height,
         xaxis=dict(title="Real Date & Time", type="date", range=x_range),
-        yaxis=dict(title=y_title),
-        legend=dict(orientation="v", yanchor="middle", y=0.5, xanchor="left", x=1.05)
+        yaxis=layout_yaxis,
+        legend=dict(orientation="v", yanchor="middle", y=0.5, xanchor="left", x=1.02)
     )
+    
+    # 5. ตั้งค่าแกน Y รอง (ถ้ามี)
     if secondary_y_cols:
         fig.update_layout(yaxis2=dict(title=secondary_y_title, overlaying="y", side="right"))
         
@@ -380,7 +382,6 @@ if not uploaded_paq:
     st.info("👈 Please upload a `.paq` binary file to detect the furnace and reveal recorder upload options.")
     st.stop()
 
-# 1. ประมวลผลไฟล์ PAQ เพื่อหาประเภทเตา
 data_paq = process_paq_file(uploaded_paq.getvalue(), uploaded_paq.name)
 if not data_paq:
     st.error("❌ Failed to parse valid probe temperature streams from the uploaded PAQ file.")
@@ -393,7 +394,6 @@ probe_cols = data_paq["probe_cols"]
 
 st.success(f"✅ PAQ File Loaded: **{uploaded_paq.name}** | Detected Furnace: **{f_variant}**")
 
-# 2. Dynamic Uploaders ตามประเภทของเตาที่ตรวจพบจาก PAQ
 st.sidebar.header(f"📁 2. Upload Recorder Data for {furnace_id}")
 
 recorder_files = None
@@ -413,7 +413,6 @@ st.sidebar.markdown("ระบุวัน/เวลาที่ PAQ เข้�
 paq_real_start = st.sidebar.date_input("PAQ Run Date", value=datetime.today())
 paq_real_time = st.sidebar.time_input("PAQ Start Time (เข้าเตา)", value=datetime.strptime("12:00:00", "%H:%M:%S").time())
 
-# คำนวณ DateTime ของ PAQ
 real_start_datetime = datetime.combine(paq_real_start, paq_real_time)
 df_paq["Real_DateTime"] = real_start_datetime + pd.to_timedelta(df_paq["Time_Seconds"], unit="s")
 paq_start = df_paq["Real_DateTime"].min()
@@ -428,7 +427,6 @@ with tabs[0]:
         df_recorder = pd.DataFrame()
         df_debinder = pd.DataFrame()
         
-        # 3. Parse Data
         if furnace_id == "NB3" and recorder_files:
             df_recorder = parse_nb3_csv([(f.name, f.read()) for f in recorder_files])
         elif furnace_id == "NB2" and recorder_files:
@@ -439,7 +437,6 @@ with tabs[0]:
             if debinder_files:
                 df_debinder = parse_nb1_debinder_csv([(f.name, f.read()) for f in debinder_files])
 
-        # ตรวจสอบความถูกต้องของช่วงเวลา
         valid_rec = not df_recorder.empty and (paq_start >= df_recorder["DateTime"].min() and paq_end <= df_recorder["DateTime"].max())
         valid_deb = not df_debinder.empty and (paq_start >= df_debinder["DateTime"].min() and paq_end <= df_debinder["DateTime"].max())
 
@@ -452,68 +449,64 @@ with tabs[0]:
             x_range_view = [paq_start - timedelta(minutes=3), paq_end + timedelta(minutes=3)]
             
             # =======================================================
-            # 🔴 CHART 1: PAQ vs Recorder Top Zones (หลัก)
+            # 🔴 1. CHART: PAQ vs Recorder Top Zones
             # =======================================================
-            fig1 = go.Figure()
             if not df_recorder.empty:
                 rec_top_cols = [c for c in df_recorder.columns if "Top Z#" in c]
-                for col in rec_top_cols:
-                    fig1.add_trace(go.Scatter(x=df_recorder["DateTime"], y=df_recorder[col], name=f"REC: {col}", line=dict(dash='dot', width=1.5), opacity=0.5))
-            for col in probe_cols:
-                fig1.add_trace(go.Scatter(x=df_paq["Real_DateTime"], y=df_paq[col], name=f"PAQ: {col}", line=dict(color=PROBE_COLORS.get(col), width=2.5)))
-            
-            fig1.update_layout(title=f"1. TIMELINE SYNC: PAQ + {furnace_id} Recorder (Top Zones)", hovermode="x unified", height=600, xaxis=dict(title="Real Date & Time", type="date", range=x_range_view), yaxis=dict(title="Temperature (°C)"))
-            st.plotly_chart(fig1, use_container_width=True)
+                draw_line_chart(df_recorder, rec_top_cols, f"1. TIMELINE SYNC: PAQ + {furnace_id} Recorder (Top Zones)", "Temperature (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=[0, 650])
             
             # =======================================================
-            # 🔴 CHART 2: Recorder Bottom Zones
+            # 🔴 2. CHART: Recorder Bottom Zones
             # =======================================================
             if not df_recorder.empty:
                 bot_cols = [c for c in df_recorder.columns if "Bottom Z#" in c]
                 if bot_cols:
-                    draw_line_chart(df_recorder, bot_cols, "2. Recorder: Bottom Zones", "Temperature (°C)", x_range_view)
+                    draw_line_chart(df_recorder, bot_cols, "2. Recorder: Bottom Zones", "Temperature (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=[0, 650])
             
             # =======================================================
-            # 🔴 CHART 3: Recorder Dryer Zones
+            # 🔴 3. CHART: Recorder Dryer Zones
             # =======================================================
             if not df_recorder.empty:
                 dry_cols = [c for c in df_recorder.columns if "Dryer" in c or "DRYOFF" in c]
                 if dry_cols:
-                    draw_line_chart(df_recorder, dry_cols, "3. Recorder: Dryer Zones", "Temperature (°C)", x_range_view)
+                    draw_line_chart(df_recorder, dry_cols, "3. Recorder: Dryer Zones", "Temperature (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=[0, 650])
                     
             # =======================================================
-            # 🔴 CHART 4: Debinder Zones (เฉพาะ NB1)
+            # 🔴 4. CHART: Debinder Zones (เฉพาะ NB1)
             # =======================================================
             if furnace_id == "NB1" and not df_debinder.empty:
                 db_cols = [c for c in df_debinder.columns if "Zone #" in c]
-                draw_line_chart(df_debinder, db_cols, "4. Recorder: Debinder Zones (NB1)", "Temperature (°C)", x_range_view, ["Combustion Air Temp"], "Comb Air Temp (°C)")
+                draw_line_chart(df_debinder, db_cols, "4. Recorder: Debinder Zones (NB1)", "Temperature (°C)", x_range_view, ["Combustion Air Temp"], "Comb Air Temp (°C)", paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=[0, 650])
                 
             # =======================================================
-            # 🔴 CHART 5: O2 ppm & N2 Flow Rate
+            # 🔴 5. CHART: O2 ppm & N2 Flow Rate
             # =======================================================
             if not df_recorder.empty:
                 o2_cols = [c for c in df_recorder.columns if "O2" in c or "Oxygen" in c]
                 n2_cols = [c for c in df_recorder.columns if "N2" in c]
                 if o2_cols or n2_cols:
-                    # O2 เป็นแกนหลัก, N2 เป็นแกนรอง
-                    draw_line_chart(df_recorder, o2_cols, "5. Recorder: Oxygen (ppm) & N2 Flow Rate", "Oxygen Level (ppm)", x_range_view, n2_cols, "N2 Flow Rate")
+                    # บังคับ Y-axis หลัก 0-650 ด้วยเช่นกันเพื่อรองรับการซ้อนเส้น PAQ Temp
+                    draw_line_chart(df_recorder, o2_cols, "5. Recorder: Oxygen (ppm) & N2 Flow Rate", "Oxygen (ppm) / PAQ Temp (°C)", x_range_view, n2_cols, "N2 Flow Rate", paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=[0, 650])
             
             # =======================================================
-            # 🔴 CHART 6: Dew Point (NB1) / Cool Water (NB3)
+            # 🔴 6. CHART: Dew Point (NB1) / Cool Water (NB3)
             # =======================================================
             if not df_recorder.empty:
                 dew_cols = [c for c in df_recorder.columns if "DEW POINT" in c]
                 cool_cols = [c for c in df_recorder.columns if "COOL WATER" in c]
                 
                 if dew_cols:
-                    draw_line_chart(df_recorder, dew_cols, "6. Recorder: Dew Point", "Dew Point (Cdp)", x_range_view)
+                    # Dew Point มักจะติดลบ จึงเผื่อ Range เป็น -100 ถึง 650
+                    draw_line_chart(df_recorder, dew_cols, "6. Recorder: Dew Point", "Dew Point (Cdp)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=[-100, 650])
                 if cool_cols:
-                    draw_line_chart(df_recorder, cool_cols, "6. Recorder: Cool Water Temp", "Temperature (°C)", x_range_view)
+                    draw_line_chart(df_recorder, cool_cols, "6. Recorder: Cool Water Temp", "Temperature (°C)", x_range_view, paq_df=df_paq, paq_cols=probe_cols, paq_colors=PROBE_COLORS, y_range=[0, 650])
 
 with tabs[1]:
     st.subheader(f"Global Furnace Profile (Standalone) - {f_variant}")
     fig_orig = go.Figure()
     for col in probe_cols:
         fig_orig.add_trace(go.Scatter(x=df_paq["Time_Seconds"], y=df_paq[col], name=col, line=dict(color=PROBE_COLORS.get(col))))
-    fig_orig.update_layout(title=f"Original PAQ Profile: {data_paq['filename']}", xaxis_title="Time (Seconds)", yaxis_title="Temperature (°C)", height=500, hovermode="x unified")
+    
+    # បังคับสเกล 0-650°C สำหรับกราฟในแท็บที่ 2 ด้วย
+    fig_orig.update_layout(title=f"Original PAQ Profile: {data_paq['filename']}", xaxis_title="Time (Seconds)", yaxis_title="Temperature (°C)", yaxis=dict(range=[0, 650]), height=500, hovermode="x unified")
     st.plotly_chart(fig_orig, use_container_width=True)
