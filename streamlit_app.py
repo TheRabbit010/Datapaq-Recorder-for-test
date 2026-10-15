@@ -171,11 +171,27 @@ def process_paq_file(file_bytes, filename):
             found_num = next(g for g in f_match.groups() if g is not None)
             furnace_id = furnace_variant = f"NB{found_num}"
 
+    raw_full_text = " ".join(raw_texts)
+    detected_paq_dt = None
+    
+    paired_match = re.search(r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})[^\d]{1,20}(\d{1,2}:\d{2}:\d{2})', raw_full_text)
+    if paired_match:
+        try: detected_paq_dt = pd.to_datetime(f"{paired_match.group(1)} {paired_match.group(2)}", dayfirst=True).to_pydatetime()
+        except: pass
+            
+    if not detected_paq_dt:
+        date_matches = re.findall(r'\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b', raw_full_text)
+        time_matches = re.findall(r'\b(\d{1,2}:\d{2}:\d{2})\b', raw_full_text)
+        if date_matches and time_matches:
+            try: detected_paq_dt = pd.to_datetime(f"{date_matches[0]} {time_matches[0]}", dayfirst=True).to_pydatetime()
+            except: pass
+
     base_cfg = FURNACE_CONFIGS.get(furnace_id, FURNACE_CONFIGS["NB3"])
 
     return {
         "filename": filename, "df_master": df_master, "probe_cols": probe_cols, "invalid_cols": [], 
-        "furnace_id": furnace_id, "furnace_variant": furnace_variant, "cfg": base_cfg, "line_speed_mpm": base_cfg["line_speed_mpm"]
+        "furnace_id": furnace_id, "furnace_variant": furnace_variant, "cfg": base_cfg, "line_speed_mpm": base_cfg["line_speed_mpm"],
+        "detected_datetime": detected_paq_dt
     }
 
 # ==============================================================================
@@ -338,7 +354,7 @@ def parse_nb1_debinder_csv(files_data):
     return pd.concat(combined_dfs, ignore_index=True).drop_duplicates("DateTime").sort_values("DateTime").reset_index(drop=True)
 
 # ==============================================================================
-# HELPER FOR DRAWING SUB-CHARTS (WITH PAQ OVERLAY & PROCESS ZONES)
+# HELPER FOR DRAWING SUB-CHARTS
 # ==============================================================================
 def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=None, secondary_y_title=None, height=520, paq_df=None, paq_cols=None, paq_colors=None, y_range=None, zones=None, line_speed=None, paq_start_time=None, group_colors=None, brazing_temp=None):
     fig = make_subplots(specs=[[{"secondary_y": bool(secondary_y_cols)}]])
@@ -447,6 +463,7 @@ zones = cfg.get("zones", [])
 line_speed = cfg.get("line_speed_mpm", 1.0)
 brazing_trigger = cfg.get("trigger_temp_brazing")
 paq_filename = data_paq["filename"]
+detected_dt = data_paq.get("detected_datetime")
 
 st.success(f"✅ PAQ File Loaded: **{paq_filename}** | Detected Furnace: **{f_variant}**")
 
@@ -463,13 +480,16 @@ elif furnace_id == "NB1":
     recorder_files = st.sidebar.file_uploader("Upload NB1 Recorder (.DAD)", type=["dad", "DAD"], accept_multiple_files=True, key=f"nb1_{st.session_state.uploader_key}")
     debinder_files = st.sidebar.file_uploader("Upload NB1 Debinder (.csv)", type=["csv"], accept_multiple_files=True, key=f"db_{st.session_state.uploader_key}")
 
-st.sidebar.markdown("---")
-st.sidebar.header("⏱️ Align PAQ Time")
-st.sidebar.markdown("ระบุวัน/เวลาที่ PAQ เข้าเตาให้ตรงกับ Recorder")
-paq_real_start = st.sidebar.date_input("PAQ Run Date", value=datetime.today())
-paq_real_time = st.sidebar.time_input("PAQ Start Time (เข้าเตา)", value=datetime.strptime("12:00:00", "%H:%M:%S").time())
+if detected_dt:
+    real_start_datetime = detected_dt
+    st.sidebar.markdown("---")
+    st.sidebar.success(f"🕰️ เวลาเข้าเตาอัตโนมัติ (PAQ):\n\n**{detected_dt.strftime('%d/%m/%Y %H:%M:%S')}**")
+else:
+    st.sidebar.markdown("---")
+    st.sidebar.error("❌ **ไม่พบข้อมูลเวลาเข้าเตา!**\n\nระบบไม่สามารถอ่านค่า Collection Started จากไฟล์ PAQ นี้ได้ กรุณาอัปโหลดไฟล์ใหม่")
+    st.error("❌ **ไม่พบข้อมูลวันที่และเวลา (Collection Started) ในไฟล์ PAQ!**\n\nระบบไม่สามารถนำกราฟไปวางซ้อน (Sync) ได้ กรุณากดปุ่ม 'Reset / Clear Data' แล้วเลือกอัปโหลดไฟล์ PAQ ที่มีข้อมูลเวลาสมบูรณ์")
+    st.stop()
 
-real_start_datetime = datetime.combine(paq_real_start, paq_real_time)
 df_paq["Real_DateTime"] = real_start_datetime + pd.to_timedelta(df_paq["Time_Seconds"], unit="s")
 paq_start = df_paq["Real_DateTime"].min()
 paq_end = df_paq["Real_DateTime"].max()
@@ -498,7 +518,7 @@ with tabs[0]:
 
         if (not df_recorder.empty and not valid_rec) or (not df_debinder.empty and not valid_deb):
             st.error("⚠️ คำเตือน: วัน/เวลาของไฟล์ PAQ ไม่อยู่ในช่วงข้อมูล Recorder หรือ Debinder ที่อัปโหลด")
-            st.info("👉 กรุณาอัปโหลดไฟล์ Recorder ชุดใหม่ให้ตรง หรือปรับตั้งเวลาเริ่ม PAQ ใหม่ที่เมนูซ้ายมือ")
+            st.info("👉 กรุณาอัปโหลดไฟล์ Recorder ชุดใหม่ให้ตรง หรือตรวจสอบไฟล์อีกครั้ง")
         
         elif not df_recorder.empty or not df_debinder.empty:
             st.success(f"✅ วันและเวลาของ PAQ ({paq_start.strftime('%H:%M')}) อยู่ในช่วงข้อมูลของ Recorder (นำกราฟซ้อนกันได้)")
