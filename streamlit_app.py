@@ -36,9 +36,21 @@ FURNACE_CONFIGS = {
     "NB3": {"line_speed_mpm": 1.270, "trigger_temp_brazing": 577.0}
 }
 
-# YOKOGAWA DAD CHANNELS (Recorder)
-CH_NB1 = [('CH001', 'Top Z#1', '°C'), ('CH002', 'Top Z#2', '°C'), ('CH003', 'Top Z#3', '°C'), ('CH004', 'Top Z#4', '°C'), ('CH005', 'Top Z#5', '°C'), ('CH006', 'Top Z#6', '°C'), ('CH007', 'Top Z#7', '°C')]
-CH_NB2 = [('CH001', 'Top Z#1', '°C'), ('CH002', 'Top Z#2', '°C'), ('CH003', 'Top Z#3', '°C'), ('CH004', 'Top Z#4', '°C'), ('CH005', 'Top Z#5', '°C'), ('CH006', 'Top Z#6', '°C'), ('CH007', 'Top Z#7', '°C')]
+# 🔴 กู้คืน Channel ทั้งหมดสำหรับ NB1 และ NB2 DAD Files
+CH_NB1 = [
+    ('CH001', 'Top Z#1', '°C'), ('CH002', 'Top Z#2', '°C'), ('CH003', 'Top Z#3', '°C'), ('CH004', 'Top Z#4', '°C'), ('CH005', 'Top Z#5', '°C'), ('CH006', 'Top Z#6', '°C'), ('CH007', 'Top Z#7', '°C'),
+    ('CH008', 'Bottom Z#1', '°C'), ('CH009', 'Bottom Z#2', '°C'), ('CH010', 'Bottom Z#3', '°C'), ('CH011', 'Bottom Z#4', '°C'), ('CH012', 'Bottom Z#5', '°C'), ('CH013', 'Bottom Z#6', '°C'), ('CH014', 'Bottom Z#7', '°C'),
+    ('CH015', 'EXIT O2', 'ppm'), ('CH019', 'ENTRANCE O2', 'ppm'),
+    ('CH016', 'Dryer #1', '°C'), ('CH017', 'Dryer #2', '°C'),
+    ('CH018', 'N2 .1', 'm3/hr'), ('CH020', 'DEW POINT', 'Cdp')
+]
+
+CH_NB2 = [
+    ('CH001', 'Top Z#1', '°C'), ('CH002', 'Top Z#2', '°C'), ('CH003', 'Top Z#3', '°C'), ('CH004', 'Top Z#4', '°C'), ('CH005', 'Top Z#5', '°C'), ('CH006', 'Top Z#6', '°C'), ('CH007', 'Top Z#7', '°C'),
+    ('CH008', 'Bottom Z#1', '°C'), ('CH009', 'Bottom Z#2', '°C'), ('CH010', 'Bottom Z#3', '°C'), ('CH011', 'Bottom Z#4', '°C'), ('CH012', 'Bottom Z#5', '°C'), ('CH013', 'Bottom Z#6', '°C'), ('CH014', 'Bottom Z#7', '°C'),
+    ('CH015', 'O2 EXIT', 'ppm'), ('CH018', 'O2 ENTRANCE', 'ppm'),
+    ('CH016', 'Dryer #1', '°C'), ('CH017', 'Dryer #2', '°C')
+]
 
 # ==============================================================================
 # PAQ PARSING FUNCTIONS
@@ -125,14 +137,11 @@ def process_paq_file(file_bytes, filename):
     
     probe_cols = [f"PB#{i}" for i in range(1, 11) if f"PB#{i}" in df_master.columns]
     
-    # ==========================================
-    # Furnace Detection Logic (แก้ไขให้รวม filename เพื่ออ่านค่า EVO)
-    # ==========================================
+    # Furnace Detection Logic
     recipe_corpus = f"{filename} " + " ".join([clean_paq_text(s) for s in raw_texts])
     
     furnace_id, furnace_variant = "NB3", "NB3"
     
-    # ลำดับความสำคัญในการค้นหา (Specific ก่อน)
     if re.search(r'\b(KE8|M2|EVO)\b', recipe_corpus, re.IGNORECASE): 
         furnace_id, furnace_variant = "NB3", "NB3 (KE8 : M2/EVO)"
     elif re.search(r'\bRAD\b', recipe_corpus, re.IGNORECASE): 
@@ -210,8 +219,10 @@ def parse_dad(raw: bytes, active_channels):
                 min_v, max_v = min(v1, v2), max(v1, v2)
             else:
                 min_v = max_v = v1
+            
+            divisor = 1.0 if name == 'N2 .1' else 10.0
             if v1 not in (-32768, -32767, 32767, 32766) and (-32000 < v1 < 32000):
-                rec[name] = max_v / 10.0
+                rec[name] = max_v / divisor
         records.append(rec)
     return records
 
@@ -268,9 +279,32 @@ def parse_nb3_csv(files_data):
                 return pd.to_numeric(data_df[idx], errors="coerce")
             return pd.Series([None] * len(data_df))
 
+        # 🔴 กู้คืนการอ่านข้อมูลให้ครบถ้วนสำหรับ NB3
         for i in range(1, 8):
             c = next((idx for idx, name in enumerate(endheader_cols) if re.search(rf'1\)TH_CH{i}Max', name, re.I)), None)
             df[f"Top Z#{i}"] = extract(c, 2 + (i - 1) * 3)
+            
+        for i in range(1, 8):
+            c = next((idx for idx, name in enumerate(endheader_cols) if re.search(rf'2\)TH_CH{i}Max', name, re.I)), None)
+            df[f"Bottom Z#{i}"] = extract(c, 2 + (7 + i - 1) * 3)
+            
+        dryoff_names = ["DRYOFF1", "DRYOFF2", "DRYOFF3"]
+        for i in range(1, 4):
+            c = next((idx for idx, name in enumerate(endheader_cols) if re.search(rf'3\)TH_CH{i}Max', name, re.I)), None)
+            df[dryoff_names[i-1]] = extract(c, 2 + (14 + i - 1) * 3)
+
+        c_o2_exit = next((idx for idx, name in enumerate(endheader_cols) if re.search(r'3\)TH_CH4Max', name, re.I)), None)
+        df["Oxygen EXIT"] = extract(c_o2_exit, 2 + (17) * 3)
+        c_o2_ent = next((idx for idx, name in enumerate(endheader_cols) if re.search(r'3\)TH_CH5Max', name, re.I)), None)
+        df["Oxygen ENTRANCE"] = extract(c_o2_ent, 2 + (18) * 3)
+        
+        c_n2_exit = next((idx for idx, name in enumerate(endheader_cols) if re.search(r'3\)TH_CH7Max', name, re.I)), None)
+        df["N2 Exit"] = extract(c_n2_exit, 2 + (20) * 3)
+        c_n2_ent = next((idx for idx, name in enumerate(endheader_cols) if re.search(r'3\)TH_CH8Max', name, re.I)), None)
+        df["N2 Entrance"] = extract(c_n2_ent, 2 + (21) * 3)
+
+        c_cool = next((idx for idx, name in enumerate(endheader_cols) if re.search(r'3\)TH_CH6Max', name, re.I)), None)
+        df["COOL WATER TEMP"] = extract(c_cool, 2 + (19) * 3)
             
         combined_dfs.append(df.dropna(subset=["DateTime"]))
         
@@ -289,7 +323,7 @@ def parse_nb1_debinder_csv(files_data):
             if line_str.startswith("20") and "," in line_str:
                 parts = [p.strip() for p in line_str.split(",")]
                 if len(parts) >= 17:
-                    try: parsed_rows.append({"DateTime": parts[0], "Zone #1": float(parts[4]), "Zone #2": float(parts[7]), "Zone #3": float(parts[10]), "Zone #4": float(parts[13])})
+                    try: parsed_rows.append({"DateTime": parts[0], "Zone #1": float(parts[4]), "Zone #2": float(parts[7]), "Zone #3": float(parts[10]), "Zone #4": float(parts[13]), "Combustion Air Temp": float(parts[16])})
                     except: pass
         if parsed_rows:
             df = pd.DataFrame(parsed_rows)
@@ -298,8 +332,38 @@ def parse_nb1_debinder_csv(files_data):
     if not combined_dfs: return pd.DataFrame()
     return pd.concat(combined_dfs, ignore_index=True).drop_duplicates("DateTime").sort_values("DateTime").reset_index(drop=True)
 
+
 # ==============================================================================
-# STREAMLIT UI LAYOUT & MAIN APPLICATION (INTEGRATED TIMELINE)
+# HELPER FOR DRAWING SUB-CHARTS
+# ==============================================================================
+def draw_line_chart(df, y_cols, title, y_title, x_range, secondary_y_cols=None, secondary_y_title=None, height=450):
+    fig = make_subplots(specs=[[{"secondary_y": bool(secondary_y_cols)}]])
+    
+    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2"]
+    
+    for i, col in enumerate(y_cols):
+        if col in df.columns:
+            fig.add_trace(go.Scatter(x=df["DateTime"], y=df[col], name=col, mode="lines", line=dict(width=2, color=colors[i % len(colors)])), secondary_y=False)
+            
+    if secondary_y_cols:
+        sec_colors = ["#17becf", "#bcbd22"]
+        for i, col in enumerate(secondary_y_cols):
+            if col in df.columns:
+                fig.add_trace(go.Scatter(x=df["DateTime"], y=df[col], name=col, mode="lines", line=dict(width=2, dash="dash", color=sec_colors[i % len(sec_colors)])), secondary_y=True)
+                
+    fig.update_layout(
+        title=title, hovermode="x unified", height=height,
+        xaxis=dict(title="Real Date & Time", type="date", range=x_range),
+        yaxis=dict(title=y_title),
+        legend=dict(orientation="v", yanchor="middle", y=0.5, xanchor="left", x=1.05)
+    )
+    if secondary_y_cols:
+        fig.update_layout(yaxis2=dict(title=secondary_y_title, overlaying="y", side="right"))
+        
+    st.plotly_chart(fig, use_container_width=True)
+
+# ==============================================================================
+# STREAMLIT UI LAYOUT & MAIN APPLICATION
 # ==============================================================================
 if "uploader_key" not in st.session_state: st.session_state.uploader_key = 0
 
@@ -343,7 +407,6 @@ elif furnace_id == "NB1":
     recorder_files = st.sidebar.file_uploader("Upload NB1 Recorder (.DAD)", type=["dad", "DAD"], accept_multiple_files=True, key=f"nb1_{st.session_state.uploader_key}")
     debinder_files = st.sidebar.file_uploader("Upload NB1 Debinder (.csv)", type=["csv"], accept_multiple_files=True, key=f"db_{st.session_state.uploader_key}")
 
-# 3. ให้ผู้ใช้ระบุเวลาจริงที่นำ Datapaq เข้าเตา เพื่อนำกราฟไปทาบให้ตรงเวลาจริงของ Recorder
 st.sidebar.markdown("---")
 st.sidebar.header("⏱️ Align PAQ Time")
 st.sidebar.markdown("ระบุวัน/เวลาที่ PAQ เข้าเตาให้ตรงกับ Recorder")
@@ -356,72 +419,96 @@ df_paq["Real_DateTime"] = real_start_datetime + pd.to_timedelta(df_paq["Time_Sec
 paq_start = df_paq["Real_DateTime"].min()
 paq_end = df_paq["Real_DateTime"].max()
 
-# ==============================================================================
-# MAIN TABS (TIMELINE SYNC)
-# ==============================================================================
-tabs = st.tabs(["⏱️ Timeline Sync (PAQ + Recorder)", "📊 PAQ Original Profile"])
+tabs = st.tabs(["⏱️ Timeline Sync (PAQ + All Recorders)", "📊 PAQ Original Profile"])
 
 with tabs[0]:
     if not recorder_files and not debinder_files:
         st.info(f"👉 กรุณาอัปโหลดไฟล์ Recorder ของ {furnace_id} ที่เมนูด้านซ้าย เพื่อดูกราฟซ้อนทับ (Timeline Sync)")
     else:
         df_recorder = pd.DataFrame()
-        rec_y_cols = []
+        df_debinder = pd.DataFrame()
         
-        # Parse Recorder data based on Furnace ID
+        # 3. Parse Data
         if furnace_id == "NB3" and recorder_files:
-            files_data = [(f.name, f.read()) for f in recorder_files]
-            df_recorder = parse_nb3_csv(files_data)
-            rec_y_cols = [c for c in df_recorder.columns if "Top Z#" in c]
-            
+            df_recorder = parse_nb3_csv([(f.name, f.read()) for f in recorder_files])
         elif furnace_id == "NB2" and recorder_files:
-            files_data = [(f.name, f.read()) for f in recorder_files]
-            df_recorder = process_dad_files(files_data, CH_NB2)
-            rec_y_cols = [c for c in df_recorder.columns if "Top Z#" in c]
-            
+            df_recorder = process_dad_files([(f.name, f.read()) for f in recorder_files], CH_NB2)
         elif furnace_id == "NB1":
             if recorder_files:
-                files_data = [(f.name, f.read()) for f in recorder_files]
-                df_recorder = process_dad_files(files_data, CH_NB1)
-                rec_y_cols = [c for c in df_recorder.columns if "Top Z#" in c]
-            elif debinder_files:
-                files_data = [(f.name, f.read()) for f in debinder_files]
-                df_recorder = parse_nb1_debinder_csv(files_data)
-                rec_y_cols = [c for c in df_recorder.columns if "Zone #" in c]
+                df_recorder = process_dad_files([(f.name, f.read()) for f in recorder_files], CH_NB1)
+            if debinder_files:
+                df_debinder = parse_nb1_debinder_csv([(f.name, f.read()) for f in debinder_files])
 
-        if df_recorder.empty:
-            st.error("❌ ไม่สามารถอ่านข้อมูลจากไฟล์ Recorder ได้ กรุณาตรวจสอบความถูกต้องของไฟล์")
-        else:
-            rec_start = df_recorder["DateTime"].min()
-            rec_end = df_recorder["DateTime"].max()
+        # ตรวจสอบความถูกต้องของช่วงเวลา
+        valid_rec = not df_recorder.empty and (paq_start >= df_recorder["DateTime"].min() and paq_end <= df_recorder["DateTime"].max())
+        valid_deb = not df_debinder.empty and (paq_start >= df_debinder["DateTime"].min() and paq_end <= df_debinder["DateTime"].max())
+
+        if (not df_recorder.empty and not valid_rec) or (not df_debinder.empty and not valid_deb):
+            st.error("⚠️ คำเตือน: วัน/เวลาของไฟล์ PAQ ไม่อยู่ในช่วงข้อมูล Recorder หรือ Debinder ที่อัปโหลด")
+            st.info("👉 กรุณาอัปโหลดไฟล์ Recorder ชุดใหม่ให้ตรง หรือปรับตั้งเวลาเริ่ม PAQ ใหม่ที่เมนูซ้ายมือ")
+        
+        elif not df_recorder.empty or not df_debinder.empty:
+            st.success(f"✅ วันและเวลาของ PAQ ({paq_start.strftime('%H:%M')}) อยู่ในช่วงข้อมูลของ Recorder (นำกราฟซ้อนกันได้)")
+            x_range_view = [paq_start - timedelta(minutes=3), paq_end + timedelta(minutes=3)]
             
-            # 4. ตรวจสอบว่าเวลาของ PAQ อยู่ในช่วงของ Recorder หรือไม่
-            if paq_start >= rec_start and paq_end <= rec_end:
-                st.success(f"✅ วันและเวลาของ PAQ ({paq_start.strftime('%H:%M')}) อยู่ในช่วงข้อมูลของ Recorder (นำกราฟซ้อนกันได้)")
+            # =======================================================
+            # 🔴 CHART 1: PAQ vs Recorder Top Zones (หลัก)
+            # =======================================================
+            fig1 = go.Figure()
+            if not df_recorder.empty:
+                rec_top_cols = [c for c in df_recorder.columns if "Top Z#" in c]
+                for col in rec_top_cols:
+                    fig1.add_trace(go.Scatter(x=df_recorder["DateTime"], y=df_recorder[col], name=f"REC: {col}", line=dict(dash='dot', width=1.5), opacity=0.5))
+            for col in probe_cols:
+                fig1.add_trace(go.Scatter(x=df_paq["Real_DateTime"], y=df_paq[col], name=f"PAQ: {col}", line=dict(color=PROBE_COLORS.get(col), width=2.5)))
+            
+            fig1.update_layout(title=f"1. TIMELINE SYNC: PAQ + {furnace_id} Recorder (Top Zones)", hovermode="x unified", height=600, xaxis=dict(title="Real Date & Time", type="date", range=x_range_view), yaxis=dict(title="Temperature (°C)"))
+            st.plotly_chart(fig1, use_container_width=True)
+            
+            # =======================================================
+            # 🔴 CHART 2: Recorder Bottom Zones
+            # =======================================================
+            if not df_recorder.empty:
+                bot_cols = [c for c in df_recorder.columns if "Bottom Z#" in c]
+                if bot_cols:
+                    draw_line_chart(df_recorder, bot_cols, "2. Recorder: Bottom Zones", "Temperature (°C)", x_range_view)
+            
+            # =======================================================
+            # 🔴 CHART 3: Recorder Dryer Zones
+            # =======================================================
+            if not df_recorder.empty:
+                dry_cols = [c for c in df_recorder.columns if "Dryer" in c or "DRYOFF" in c]
+                if dry_cols:
+                    draw_line_chart(df_recorder, dry_cols, "3. Recorder: Dryer Zones", "Temperature (°C)", x_range_view)
+                    
+            # =======================================================
+            # 🔴 CHART 4: Debinder Zones (เฉพาะ NB1)
+            # =======================================================
+            if furnace_id == "NB1" and not df_debinder.empty:
+                db_cols = [c for c in df_debinder.columns if "Zone #" in c]
+                draw_line_chart(df_debinder, db_cols, "4. Recorder: Debinder Zones (NB1)", "Temperature (°C)", x_range_view, ["Combustion Air Temp"], "Comb Air Temp (°C)")
                 
-                fig = go.Figure()
+            # =======================================================
+            # 🔴 CHART 5: O2 ppm & N2 Flow Rate
+            # =======================================================
+            if not df_recorder.empty:
+                o2_cols = [c for c in df_recorder.columns if "O2" in c or "Oxygen" in c]
+                n2_cols = [c for c in df_recorder.columns if "N2" in c]
+                if o2_cols or n2_cols:
+                    # O2 เป็นแกนหลัก, N2 เป็นแกนรอง
+                    draw_line_chart(df_recorder, o2_cols, "5. Recorder: Oxygen (ppm) & N2 Flow Rate", "Oxygen Level (ppm)", x_range_view, n2_cols, "N2 Flow Rate")
+            
+            # =======================================================
+            # 🔴 CHART 6: Dew Point (NB1) / Cool Water (NB3)
+            # =======================================================
+            if not df_recorder.empty:
+                dew_cols = [c for c in df_recorder.columns if "DEW POINT" in c]
+                cool_cols = [c for c in df_recorder.columns if "COOL WATER" in c]
                 
-                # --- กราฟ Recorder (เป็นพื้นหลัง/อ้างอิง) ---
-                for col in rec_y_cols:
-                    fig.add_trace(go.Scatter(x=df_recorder["DateTime"], y=df_recorder[col], name=f"REC: {col}", line=dict(dash='dot', width=1.5), opacity=0.5))
-                
-                # --- กราฟ PAQ (ซ้อนทับตามเวลาจริง) ---
-                for col in probe_cols:
-                    fig.add_trace(go.Scatter(x=df_paq["Real_DateTime"], y=df_paq[col], name=f"PAQ: {col}", line=dict(color=PROBE_COLORS.get(col), width=2.5)))
-                
-                fig.update_layout(
-                    title=f"TIMELINE SYNC: PAQ + {furnace_id} Recorder",
-                    hovermode="x unified",
-                    height=650,
-                    xaxis=dict(title="Real Date & Time", type="date", range=[paq_start - timedelta(minutes=5), paq_end + timedelta(minutes=5)]),
-                    yaxis=dict(title="Temperature (°C)")
-                )
-                st.plotly_chart(fig, use_container_width=True)
-                
-            else:
-                st.error(f"⚠️ คำเตือน: วัน/เวลาของไฟล์ PAQ ({paq_start.strftime('%Y-%m-%d %H:%M:%S')}) \n"
-                         f"ไม่อยู่ในช่วงข้อมูล Recorder ({rec_start.strftime('%Y-%m-%d %H:%M:%S')} ถึง {rec_end.strftime('%Y-%m-%d %H:%M:%S')})")
-                st.info("👉 **กรุณาอัปโหลดไฟล์ Recorder ชุดใหม่ให้ตรงกับช่วงเวลาที่รัน PAQ** หรือปรับตั้งเวลาเริ่ม PAQ ใหม่ที่เมนู 'Align PAQ Time' ด้านซ้าย")
+                if dew_cols:
+                    draw_line_chart(df_recorder, dew_cols, "6. Recorder: Dew Point", "Dew Point (Cdp)", x_range_view)
+                if cool_cols:
+                    draw_line_chart(df_recorder, cool_cols, "6. Recorder: Cool Water Temp", "Temperature (°C)", x_range_view)
 
 with tabs[1]:
     st.subheader(f"Global Furnace Profile (Standalone) - {f_variant}")
