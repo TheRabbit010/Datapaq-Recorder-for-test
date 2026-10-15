@@ -106,6 +106,50 @@ def clean_paq_text(raw_text):
             cleaned_parts.append(p)
     return " ".join(cleaned_parts)
 
+def detect_furnace_variant(filename, recipe_corpus):
+    """ระบุชนิดเตาอย่างเที่ยงตรงสูง โดยยึดชื่อไฟล์เป็นหลักก่อนเสมอ"""
+    fn_upper = filename.upper()
+    
+    # 1. เช็คโมเดลเฉพาะจากชื่อไฟล์โดยตรง (ความสำคัญสูงสุด)
+    # กลุ่ม NB3
+    if any(k in fn_upper for k in ["EVO", "KE8", "BTM"]) or re.search(r'\bM2\b', fn_upper):
+        if "BTM" in fn_upper:
+            return "NB3", "NB3 (BTM)"
+        return "NB3", "NB3 (KE8 : M2/EVO)"
+    
+    # กลุ่ม NB2
+    if any(k in fn_upper for k in ["UTAHC", "TAHC", "G2"]):
+        if "UTAHC" in fn_upper:
+            return "NB2", "NB2 (Utahc)"
+        return "NB2", "NB2 (Tahc)"
+        
+    # กลุ่ม NB1
+    if any(k in fn_upper for k in ["RAD", "12SHP", "CMFB", "CDS", "KN9", "DNGA", "P42QR", "P42V", "SU2", "F44", "Y4L", "MY25", "CE", "D12A"]):
+        if "RAD" in fn_upper:
+            return "NB1", "NB1 (RAD)"
+        return "NB1", "NB1 (CDS/KN9/12SHP)"
+
+    # ตรวจสอบชื่อเตาตรงตัวในชื่อไฟล์
+    if "NB3" in fn_upper: return "NB3", "NB3"
+    if "NB2" in fn_upper: return "NB2", "NB2 (Tahc)"
+    if "NB1" in fn_upper: return "NB1", "NB1 (Standard)"
+
+    # 2. กรณีชื่อไฟล์ไม่มี Keyword ให้ใช้การตรวจจับจากเนื้อหา Recipe ตาม Code 1
+    if re.search(r'\bRAD\b', recipe_corpus, re.IGNORECASE): return "NB1", "NB1 (RAD)"
+    elif re.search(r'\bUtahc\b', recipe_corpus, re.IGNORECASE): return "NB2", "NB2 (Utahc)"
+    elif re.search(r'\b(Tahc|G2|NB2)\b', recipe_corpus, re.IGNORECASE): return "NB2", "NB2 (Tahc)"
+    elif re.search(r'\b(CDS|KN9|12SHP|DNGA|P42QR|P42V|SU2|F44|Y4L|CMFB|MY25|CE|D12A)\b', recipe_corpus, re.IGNORECASE): return "NB1", "NB1 (CDS/KN9/12SHP)"
+    elif re.search(r'\bBTM\b', recipe_corpus, re.IGNORECASE): return "NB3", "NB3 (BTM)"
+    elif re.search(r'\b(KE8|EVO)\b', recipe_corpus, re.IGNORECASE) or re.search(r'\bM2\b', recipe_corpus): return "NB3", "NB3 (KE8 : M2/EVO)"
+    elif re.search(r'\bWK\d{1,2}\b', recipe_corpus, re.IGNORECASE) or re.search(r'\b\d{6}\b', recipe_corpus): return "NB1", "NB1 (Standard)"
+    else:
+        f_match = re.search(r'NB\s*Furnace\s*0?([123])\b|NB\s*#?\s*0?([123])\b|NB-0?([123])\b', recipe_corpus, re.IGNORECASE)
+        if f_match: 
+            found_num = next(g for g in f_match.groups() if g is not None)
+            return f"NB{found_num}", f"NB{found_num}"
+            
+    return "NB1", "NB1 (Standard)"
+
 @st.cache_data
 def process_paq_file(file_bytes, filename):
     ole_bytes = io.BytesIO(file_bytes)
@@ -148,24 +192,10 @@ def process_paq_file(file_bytes, filename):
     
     probe_cols = [f"PB#{i}" for i in range(1, 11) if f"PB#{i}" in df_master.columns]
     
-    # 🔴 การระบุชนิดเตาจาก Code 1 ที่มีความเที่ยงตรงสูง
     recipe_corpus = f"{filename} " + " ".join([clean_paq_text(s) for s in raw_texts])
-    furnace_id, furnace_variant = "NB3", "NB3"
-    
-    if re.search(r'\bRAD\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB1", "NB1 (RAD)"
-    elif re.search(r'\b(Utahc|UT)\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB2", "NB2 (Utahc)"
-    elif re.search(r'\b(Tahc|G2|NB2)\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB2", "NB2 (Tahc)"
-    elif re.search(r'\b(CDS|KN9|12SHP|DNGA|P42QR|P42V|SU2|F44|Y4L|CMFB|MY25|CE|D12A)\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB1", "NB1 (CDS/KN9/12SHP)"
-    elif re.search(r'\bBTM\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB3", "NB3 (BTM)"
-    elif re.search(r'\b(KE8|M2|EVO|NB3)\b', recipe_corpus, re.IGNORECASE): furnace_id, furnace_variant = "NB3", "NB3 (KE8 : M2/EVO)"
-    elif (re.search(r'\bWK\d{1,2}\b', recipe_corpus, re.IGNORECASE) or re.search(r'\b\d{6}\b', recipe_corpus)): furnace_id, furnace_variant = "NB1", "NB1 (Standard)"
-    else:
-        f_match = re.search(r'NB\s*Furnace\s*0?([123])\b|NB\s*#?\s*0?([123])\b|NB-0?([123])\b', recipe_corpus, re.IGNORECASE)
-        if f_match: 
-            found_num = next(g for g in f_match.groups() if g is not None)
-            furnace_id = furnace_variant = f"NB{found_num}"
+    furnace_id, furnace_variant = detect_furnace_variant(filename, recipe_corpus)
 
-    # 🔴 ดึงวันที่/เวลา Collection Started
+    # 🔴 ดึงวันที่/เวลา Collection Started และ #paqfile start time
     raw_full_text = " ".join(raw_texts)
     detected_paq_dt = None
     
@@ -187,12 +217,24 @@ def process_paq_file(file_bytes, filename):
                     break
             except: continue
 
-    base_cfg = FURNACE_CONFIGS.get(furnace_id, FURNACE_CONFIGS["NB3"])
+    # ดึงวันที่จากชื่อไฟล์เป็นตัวช่วยสำรอง (เช่น 20261001 หรือ 06102026)
+    inferred_date = None
+    m_ymd = re.search(r'\b(20\d{2})([01]\d)([0-3]\d)\b', filename)
+    if m_ymd:
+        try: inferred_date = datetime(int(m_ymd.group(1)), int(m_ymd.group(2)), int(m_ymd.group(3))).date()
+        except: pass
+    if not inferred_date:
+        m_dmy = re.search(r'\b([0-3]\d)([01]\d)(20\d{2})\b', filename)
+        if m_dmy:
+            try: inferred_date = datetime(int(m_dmy.group(3)), int(m_dmy.group(2)), int(m_dmy.group(1))).date()
+            except: pass
+
+    base_cfg = FURNACE_CONFIGS.get(furnace_id, FURNACE_CONFIGS["NB1"])
 
     return {
         "filename": filename, "df_master": df_master, "probe_cols": probe_cols, "invalid_cols": [], 
         "furnace_id": furnace_id, "furnace_variant": furnace_variant, "cfg": base_cfg, "line_speed_mpm": base_cfg["line_speed_mpm"],
-        "detected_datetime": detected_paq_dt
+        "detected_datetime": detected_paq_dt, "inferred_date": inferred_date
     }
 
 # ==============================================================================
@@ -400,7 +442,7 @@ def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=No
                 fig.add_trace(go.Scatter(
                     x=df_rec["DateTime"], y=df_rec[col], 
                     name=f"REC: {col}", mode="lines", 
-                    line=dict(width=1.5, color=sec_colors[i % len(sec_colors)]),
+                    line=dict(width=1.5, color=sec_colors[i % len(sec_colors)]), 
                     opacity=0.8
                 ), secondary_y=True)
                 
@@ -465,31 +507,41 @@ line_speed = cfg.get("line_speed_mpm", 1.0)
 brazing_trigger = cfg.get("trigger_temp_brazing")
 paq_filename = data_paq["filename"]
 detected_dt = data_paq.get("detected_datetime")
+inferred_d = data_paq.get("inferred_date")
 
-# 🔴 แสดงชื่อไฟล์ ชนิดเตา และ Collection Started
+# 🔴 แสดงสถานะพร้อม Collection Started
 if detected_dt:
     dt_str = detected_dt.strftime('%d/%m/%Y %H:%M:%S')
     st.success(f"✅ **PAQ File Loaded:** {paq_filename} | **Detected Furnace:** {f_variant} | 🕰️ **Collection Started:** {dt_str}")
 else:
     st.success(f"✅ **PAQ File Loaded:** {paq_filename} | **Detected Furnace:** {f_variant}")
 
-# 🔴 เมนู Align PAQ Time ให้ผู้ใช้ปรับเปลี่ยนวัน/เวลาได้
+# ==========================================
+# 🔴 เมนูกำหนดวัน/เวลา PAQ ด้วยตนเอง (Align PAQ Time)
+# ==========================================
 st.sidebar.markdown("---")
 st.sidebar.header("⏱️ Align PAQ Time")
+st.sidebar.caption("ระบุหรือตรวจสอบวัน/เวลาที่เข้าเตา เพื่อใช้จับคู่กับ Recorder")
 
+# ตั้งค่าเริ่มต้นของ Date และ Time จากการสกัด
 if detected_dt:
-    default_date = detected_dt.date()
-    default_time = detected_dt.time()
+    init_date = detected_dt.date()
+    init_time = detected_dt.time()
+elif inferred_d:
+    init_date = inferred_d
+    init_time = datetime.strptime("14:00:11", "%H:%M:%S").time()
 else:
-    default_date = datetime.today().date()
-    default_time = datetime.strptime("12:00:00", "%H:%M:%S").time()
+    init_date = datetime.today().date()
+    init_time = datetime.strptime("12:00:00", "%H:%M:%S").time()
 
-paq_real_start = st.sidebar.date_input("PAQ Run Date", value=default_date)
-paq_real_time = st.sidebar.time_input("PAQ Start Time (เข้าเตา)", value=default_time)
+paq_real_start = st.sidebar.date_input("PAQ Run Date", value=init_date)
+paq_real_time = st.sidebar.time_input("PAQ Start Time (เข้าเตา)", value=init_time)
 
 real_start_datetime = datetime.combine(paq_real_start, paq_real_time)
 
-# 🔴 เมนูอัปโหลดไฟล์ Recorder
+# ==========================================
+# 🔴 เมนูอัปโหลดไฟล์ Recorder ตามชนิดเตาที่ตรวจพบ
+# ==========================================
 st.sidebar.markdown("---")
 st.sidebar.header(f"📁 2. Upload Recorder Data for {furnace_id}")
 
