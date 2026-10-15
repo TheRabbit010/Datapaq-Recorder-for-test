@@ -388,8 +388,8 @@ def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=No
             fig.add_trace(go.Scatter(
                 x=df_rec["DateTime"], y=df_rec[col], 
                 name=f"REC: {col}", mode="lines", 
-                line=dict(width=2, dash="dash", color=rec_colors[i % len(rec_colors)]), 
-                opacity=0.9
+                line=dict(width=1.5, color=rec_colors[i % len(rec_colors)]), # 🔴 ปรับความบางและเส้นทึบ
+                opacity=0.8 # 🔴 ลดความเข้มแสง
             ), secondary_y=False)
             
     if secondary_y_cols:
@@ -399,8 +399,8 @@ def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=No
                 fig.add_trace(go.Scatter(
                     x=df_rec["DateTime"], y=df_rec[col], 
                     name=f"REC: {col}", mode="lines", 
-                    line=dict(width=2, dash="dot", color=sec_colors[i % len(sec_colors)]),
-                    opacity=0.9
+                    line=dict(width=1.5, color=sec_colors[i % len(sec_colors)]), # 🔴 ปรับความบางและเส้นทึบ
+                    opacity=0.8 # 🔴 ลดความเข้มแสง
                 ), secondary_y=True)
                 
     if paq_df is not None and paq_cols is not None:
@@ -409,7 +409,7 @@ def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=No
             fig.add_trace(go.Scatter(
                 x=paq_df["Real_DateTime"], y=paq_df[col], 
                 name=f"PAQ: {col}", mode="lines", 
-                line=dict(color=c, width=2.5)
+                line=dict(color=c, width=2.5) # 🔴 PAQ หนาและเข้มกว่าปกติ
             ), secondary_y=False)
 
     layout_yaxis = dict(title=y_title, showgrid=True, zeroline=False)
@@ -485,10 +485,7 @@ if detected_dt:
     st.sidebar.markdown("---")
     st.sidebar.success(f"🕰️ เวลาเข้าเตาอัตโนมัติ (PAQ):\n\n**{detected_dt.strftime('%d/%m/%Y %H:%M:%S')}**")
 else:
-    st.sidebar.markdown("---")
-    st.sidebar.error("❌ **ไม่พบข้อมูลเวลาเข้าเตา!**\n\nระบบไม่สามารถอ่านค่า Collection Started จากไฟล์ PAQ นี้ได้ กรุณาอัปโหลดไฟล์ใหม่")
-    st.error("❌ **ไม่พบข้อมูลวันที่และเวลา (Collection Started) ในไฟล์ PAQ!**\n\nระบบไม่สามารถนำกราฟไปวางซ้อน (Sync) ได้ กรุณากดปุ่ม 'Reset / Clear Data' แล้วเลือกอัปโหลดไฟล์ PAQ ที่มีข้อมูลเวลาสมบูรณ์")
-    st.stop()
+    real_start_datetime = datetime.now() # Fallback เพื่อไม่ให้ Error ตอนคำนวณ
 
 df_paq["Real_DateTime"] = real_start_datetime + pd.to_timedelta(df_paq["Time_Seconds"], unit="s")
 paq_start = df_paq["Real_DateTime"].min()
@@ -499,6 +496,8 @@ tabs = st.tabs(["⏱️ Timeline Sync (PAQ + All Recorders)", "📊 PAQ Original
 with tabs[0]:
     if not recorder_files and not debinder_files:
         st.info(f"👉 กรุณาอัปโหลดไฟล์ Recorder ของ {furnace_id} ที่เมนูด้านซ้าย เพื่อดูกราฟซ้อนทับ (Timeline Sync)")
+    elif not detected_dt:
+        st.error("❌ **ไม่พบข้อมูลวันที่และเวลา (Collection Started) ในไฟล์ PAQ!**\n\nระบบไม่สามารถนำกราฟไปวางซ้อน (Sync) ได้ เนื่องจากไม่มีจุดอ้างอิงเวลา กรุณากดปุ่ม 'Reset / Clear Data' ด้านซ้ายมือ แล้วเลือกอัปโหลดไฟล์ PAQ ที่มีข้อมูลเวลาสมบูรณ์")
     else:
         df_recorder = pd.DataFrame()
         df_debinder = pd.DataFrame()
@@ -523,7 +522,6 @@ with tabs[0]:
         elif not df_recorder.empty or not df_debinder.empty:
             st.success(f"✅ วันและเวลาของ PAQ ({paq_start.strftime('%H:%M')}) อยู่ในช่วงข้อมูลของ Recorder (นำกราฟซ้อนกันได้)")
             
-            # คำนวณช่วงเวลาที่ดีที่สุดให้พอดีกับกระบวนการเตา
             if zones and line_speed:
                 max_dist = max([z["start"] + z["length"] for z in zones])
                 total_furnace_sec = (max_dist / line_speed) * 60
