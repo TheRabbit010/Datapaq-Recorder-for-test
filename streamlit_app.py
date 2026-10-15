@@ -9,6 +9,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+import glob
 from PIL import Image
 from datetime import datetime, timedelta
 
@@ -124,7 +125,7 @@ def process_paq_file(file_bytes, filename):
                     except: pass
             
             clean_b = data_b.replace(b'\x00', b'')
-            ascii_matches = re.findall(rb'[\x20-\x7E]{4,}', clean_b)
+            ascii_matches = re.findall(rb'[\x20-\x7E]{3,}', clean_b)
             for m in ascii_matches: raw_texts.append(m.decode('ascii', errors='ignore').strip())
         except: continue
 
@@ -174,24 +175,28 @@ def process_paq_file(file_bytes, filename):
             furnace_id = furnace_variant = f"NB{found_num}"
 
     # ==========================================
-    # 🔴 ดึงวันที่/เวลา Collection Started เท่านั้น
+    # 🔴 ดึงวันที่/เวลา Collection Started เท่านั้น 
     # ==========================================
     raw_full_text = " ".join(raw_texts)
     detected_paq_dt = None
     
-    # 1. ค้นหาจากคำว่า "Collection Started" โดยตรง (บังคับให้ดึงแค่จุดนี้ ไม่เอา Data Loaded)
-    collection_match = re.search(r'Collection\s*Started[^\d]*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\s+(\d{1,2}:\d{2}:\d{2}(?:\s*[aApP][mM])?)', raw_full_text, re.IGNORECASE)
+    paq_dt_patterns = [
+        r'#paqfile\s+date\s*=\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})[^\n]*#paqfile\s+start\s+time\s*=\s*(\d{1,2}:\d{2}:\d{2}(?:\s*[APap][Mm])?)',
+        r'#paqfile\s+start\s+time\s*=\s*(\d{1,2}:\d{2}:\d{2}(?:\s*[APap][Mm])?)[^\n]*#paqfile\s+date\s*=\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})',
+        r'Collection\s*Started[^\d]{1,30}(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\s+(\d{1,2}:\d{2}:\d{2}\s*[APap]?[Mm]?)'
+    ]
     
-    # 2. ค้นหาจากแท็กของระบบ Datapaq
-    paq_time_match = re.search(r'#paqfile\s+start\s+time\s*=\s*(\d{1,2}:\d{2}:\d{2}(?:\s*[aApP][mM])?)', raw_full_text, re.IGNORECASE)
-    paq_date_match = re.search(r'#paqfile\s+date\s*=\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})', raw_full_text, re.IGNORECASE)
-
-    if collection_match:
-        try: detected_paq_dt = pd.to_datetime(f"{collection_match.group(1)} {collection_match.group(2)}").to_pydatetime()
-        except: pass
-    elif paq_date_match and paq_time_match:
-        try: detected_paq_dt = pd.to_datetime(f"{paq_date_match.group(1)} {paq_time_match.group(1)}").to_pydatetime()
-        except: pass
+    for pat in paq_dt_patterns:
+        match = re.search(pat, raw_full_text, re.IGNORECASE)
+        if match:
+            try:
+                g1, g2 = match.group(1), match.group(2)
+                dt_str = f"{g1} {g2}" if re.search(r'\d{1,2}[/-]\d{1,2}[/-]\d{2,4}', g1) else f"{g2} {g1}"
+                dt_obj = pd.to_datetime(dt_str).to_pydatetime()
+                if 2000 < dt_obj.year < 2050:
+                    detected_paq_dt = dt_obj
+                    break
+            except: continue
 
     base_cfg = FURNACE_CONFIGS.get(furnace_id, FURNACE_CONFIGS["NB3"])
 
@@ -472,6 +477,7 @@ brazing_trigger = cfg.get("trigger_temp_brazing")
 paq_filename = data_paq["filename"]
 detected_dt = data_paq.get("detected_datetime")
 
+# 🔴 แสดงข้อมูลชื่อไฟล์และเวลาที่ตรวจพบ
 if detected_dt:
     dt_str = detected_dt.strftime('%d/%m/%Y %H:%M:%S')
     st.success(f"✅ **PAQ File Loaded:** {paq_filename} | **Detected Furnace:** {f_variant} | 🕰️ **Collection Started:** {dt_str}")
@@ -507,6 +513,7 @@ with tabs[0]:
     if not recorder_files and not debinder_files:
         st.info(f"👉 กรุณาอัปโหลดไฟล์ Recorder ของ {furnace_id} ที่เมนูด้านซ้าย เพื่อดูกราฟซ้อนทับ (Timeline Sync)")
     elif not detected_dt:
+        # โชว์แจ้งเตือนสีแดงเฉพาะหลังจากที่มีความพยายามอัปโหลดไฟล์ Recorder แล้วเท่านั้น
         st.error("❌ **ไม่พบข้อมูลวันที่และเวลา (Collection Started) ในไฟล์ PAQ!**\n\nระบบไม่สามารถนำกราฟไปวางซ้อน (Sync) ได้ เนื่องจากไม่มีจุดอ้างอิงเวลา กรุณากดปุ่ม 'Reset / Clear Data' ด้านซ้ายมือ แล้วเลือกอัปโหลดไฟล์ PAQ ที่มีข้อมูลเวลาสมบูรณ์")
     else:
         df_recorder = pd.DataFrame()
