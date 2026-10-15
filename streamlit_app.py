@@ -171,17 +171,42 @@ def process_paq_file(file_bytes, filename):
             found_num = next(g for g in f_match.groups() if g is not None)
             furnace_id = furnace_variant = f"NB{found_num}"
 
+    # ==========================================
+    # 🔴 ดึงวันที่/เวลา Collection Started แบบสมบูรณ์ 
+    # ==========================================
     raw_full_text = " ".join(raw_texts)
     detected_paq_dt = None
     
-    paired_match = re.search(r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})[^\d]{1,20}(\d{1,2}:\d{2}:\d{2})', raw_full_text)
-    if paired_match:
-        try: detected_paq_dt = pd.to_datetime(f"{paired_match.group(1)} {paired_match.group(2)}", dayfirst=True).to_pydatetime()
+    # 1. ค้นหา Tag รูปแบบตรงตัวของ #paqfile start time=... และ #paqfile date=...
+    time_match = re.search(r'#paqfile\s+start\s+time\s*=\s*(\d{1,2}:\d{2}:\d{2}(?:\s*[aApP][mM])?)', raw_full_text, re.IGNORECASE)
+    date_match = re.search(r'#paqfile\s+date\s*=\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})', raw_full_text, re.IGNORECASE)
+    
+    # 2. ค้นหาคำว่า Collection Started: ...
+    collection_match = re.search(r'(?:Collection\s*Started|Start\s*Time)[^\d]*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\s+(\d{1,2}:\d{2}:\d{2}(?:\s*[aApP][mM])?)', raw_full_text, re.IGNORECASE)
+
+    if date_match and time_match:
+        try: detected_paq_dt = pd.to_datetime(f"{date_match.group(1)} {time_match.group(1)}", dayfirst=True).to_pydatetime()
         except: pass
+    elif time_match:
+        any_date = re.search(r'\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b', raw_full_text)
+        if any_date:
+            try: detected_paq_dt = pd.to_datetime(f"{any_date.group(1)} {time_match.group(1)}", dayfirst=True).to_pydatetime()
+            except: pass
+    elif collection_match:
+        try: detected_paq_dt = pd.to_datetime(f"{collection_match.group(1)} {collection_match.group(2)}", dayfirst=True).to_pydatetime()
+        except: pass
+
+    # 3. ค้นหาแบบคู่ วันที่และเวลา ที่อยู่ใกล้กัน
+    if not detected_paq_dt:
+        paired_match = re.search(r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})[^\d]{1,20}(\d{1,2}:\d{2}:\d{2}(?:\s*[aApP][mM])?)', raw_full_text)
+        if paired_match:
+            try: detected_paq_dt = pd.to_datetime(f"{paired_match.group(1)} {paired_match.group(2)}", dayfirst=True).to_pydatetime()
+            except: pass
             
+    # 4. Fallback สุดท้าย ดึงวันที่/เวลา แรกสุดที่โผล่ขึ้นมาในไฟล์
     if not detected_paq_dt:
         date_matches = re.findall(r'\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b', raw_full_text)
-        time_matches = re.findall(r'\b(\d{1,2}:\d{2}:\d{2})\b', raw_full_text)
+        time_matches = re.findall(r'\b(\d{1,2}:\d{2}:\d{2}(?:\s*[aApP][mM])?)\b', raw_full_text)
         if date_matches and time_matches:
             try: detected_paq_dt = pd.to_datetime(f"{date_matches[0]} {time_matches[0]}", dayfirst=True).to_pydatetime()
             except: pass
@@ -388,8 +413,8 @@ def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=No
             fig.add_trace(go.Scatter(
                 x=df_rec["DateTime"], y=df_rec[col], 
                 name=f"REC: {col}", mode="lines", 
-                line=dict(width=1.5, color=rec_colors[i % len(rec_colors)]), # 🔴 ปรับความบางและเส้นทึบ
-                opacity=0.8 # 🔴 ลดความเข้มแสง
+                line=dict(width=1.5, color=rec_colors[i % len(rec_colors)]), 
+                opacity=0.8
             ), secondary_y=False)
             
     if secondary_y_cols:
@@ -399,8 +424,8 @@ def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=No
                 fig.add_trace(go.Scatter(
                     x=df_rec["DateTime"], y=df_rec[col], 
                     name=f"REC: {col}", mode="lines", 
-                    line=dict(width=1.5, color=sec_colors[i % len(sec_colors)]), # 🔴 ปรับความบางและเส้นทึบ
-                    opacity=0.8 # 🔴 ลดความเข้มแสง
+                    line=dict(width=1.5, color=sec_colors[i % len(sec_colors)]),
+                    opacity=0.8
                 ), secondary_y=True)
                 
     if paq_df is not None and paq_cols is not None:
@@ -409,7 +434,7 @@ def draw_line_chart(df_rec, y_cols, title, y_title, x_range, secondary_y_cols=No
             fig.add_trace(go.Scatter(
                 x=paq_df["Real_DateTime"], y=paq_df[col], 
                 name=f"PAQ: {col}", mode="lines", 
-                line=dict(color=c, width=2.5) # 🔴 PAQ หนาและเข้มกว่าปกติ
+                line=dict(color=c, width=2.5)
             ), secondary_y=False)
 
     layout_yaxis = dict(title=y_title, showgrid=True, zeroline=False)
@@ -465,7 +490,12 @@ brazing_trigger = cfg.get("trigger_temp_brazing")
 paq_filename = data_paq["filename"]
 detected_dt = data_paq.get("detected_datetime")
 
-st.success(f"✅ PAQ File Loaded: **{paq_filename}** | Detected Furnace: **{f_variant}**")
+if detected_dt:
+    dt_str = detected_dt.strftime('%d/%m/%Y %H:%M:%S')
+    st.success(f"✅ **PAQ File Loaded:** {paq_filename} | **Detected Furnace:** {f_variant} | 🕰️ **Collection Started:** {dt_str}")
+else:
+    st.success(f"✅ **PAQ File Loaded:** {paq_filename} | **Detected Furnace:** {f_variant}")
+    st.warning("⚠️ ไม่พบข้อมูลเวลา (Collection Started) ในไฟล์ PAQ หรือข้อมูลเวลาอาจไม่ได้อยู่ในรูปแบบมาตรฐาน")
 
 st.sidebar.header(f"📁 2. Upload Recorder Data for {furnace_id}")
 
@@ -482,10 +512,8 @@ elif furnace_id == "NB1":
 
 if detected_dt:
     real_start_datetime = detected_dt
-    st.sidebar.markdown("---")
-    st.sidebar.success(f"🕰️ เวลาเข้าเตาอัตโนมัติ (PAQ):\n\n**{detected_dt.strftime('%d/%m/%Y %H:%M:%S')}**")
 else:
-    real_start_datetime = datetime.now() # Fallback เพื่อไม่ให้ Error ตอนคำนวณ
+    real_start_datetime = datetime.now() 
 
 df_paq["Real_DateTime"] = real_start_datetime + pd.to_timedelta(df_paq["Time_Seconds"], unit="s")
 paq_start = df_paq["Real_DateTime"].min()
